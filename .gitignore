@@ -1,0 +1,10 @@
+.env
+data/postgres/
+backend/.venv/
+backend/*.db
+backend/src/*.egg-info/
+dashboard/node_modules/
+dashboard/dist/
+dashboard/*.tsbuildinfo
+__pycache__/
+.pytest_cache/

@@ -1,0 +1,16 @@
+id: mobility_sdv_security_cpp
+display_name: 모빌리티·SDV·보안·C++ 개발자
+queries:
+  - 모빌리티 C++ 개발자
+  - 차량 소프트웨어 C++
+  - SDV AUTOSAR 개발자
+  - 차량 보안 C++ 개발자
+  - V2X 보안 개발자
+  - 임베디드 보안 개발자
+  - Linux 시스템 C++ 개발자
+  - PKI 암호 C++ 개발자
+include_keywords: [C++, C/C++, 모빌리티, 자동차, 차량, SDV, AUTOSAR, V2X, PKI, 암호, Linux, 임베디드, SOME/IP, DDS, CAN, Ethernet, 미들웨어]
+exclude_keywords: [영업, 마케팅, 사업개발, 강사, 게임 클라이언트, 퀀트, 보안 관제, 개인정보보호 담당, 컴플라이언스 전담]
+source_queries:
+  WANTED: [모빌리티 차량 소프트웨어 C++ 개발자, SDV AUTOSAR 차량 플랫폼 개발자, 차량 임베디드 보안 PKI C++ 개발자, Linux 임베디드 시스템 C++ 개발자]
+  SARAMIN: [모빌리티 C++ 개발자, SDV AUTOSAR 개발자, 차량 보안 C++ 개발자, 임베디드 Linux C++ 개발자]

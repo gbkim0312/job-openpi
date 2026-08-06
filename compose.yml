@@ -1,0 +1,27 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment: {TZ: ${TZ:-Asia/Seoul}, POSTGRES_DB: ${POSTGRES_DB}, POSTGRES_USER: ${POSTGRES_USER}, POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}}
+    volumes: [./data/postgres:/var/lib/postgresql/data]
+    healthcheck: {test: [CMD-SHELL, 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"'], interval: 10s, timeout: 5s, retries: 10}
+  migrate:
+    build: ./backend
+    command: [migrate]
+    env_file: .env
+    depends_on: {postgres: {condition: service_healthy}}
+  api:
+    build: ./backend
+    command: [api]
+    env_file: .env
+    depends_on: {postgres: {condition: service_healthy}, migrate: {condition: service_completed_successfully}}
+    healthcheck: {test: [CMD, python, -c, 'import urllib.request; urllib.request.urlopen("http://127.0.0.1:8000/health")'], interval: 30s, timeout: 5s, retries: 5}
+  scheduler:
+    build: ./backend
+    command: [scheduler]
+    env_file: .env
+    environment: {SCHEDULER_ENABLED: 'true'}
+    depends_on: {postgres: {condition: service_healthy}, migrate: {condition: service_completed_successfully}}
+  dashboard:
+    build: ./dashboard
+    ports: ['${DASHBOARD_PORT:-8080}:80']
+    depends_on: {api: {condition: service_healthy}}
