@@ -143,6 +143,7 @@ curl -G http://localhost:8000/api/v1/jobs \
 | Method | Path | 설명 |
 | --- | --- | --- |
 | `POST` | `/api/v1/admin/sync` | 활성화된 모든 출처 동기화 |
+| `POST` | `/api/v1/admin/sync/cancel` | 실행 중인 동기화 중지 요청 |
 | `POST` | `/api/v1/admin/sources/{source}/sync` | 특정 출처 동기화 |
 | `POST` | `/api/v1/admin/sources/{source}/recheck` | 출처 공고 재확인 실행 |
 | `POST` | `/api/v1/admin/jobs/{job_id}/recheck` | 특정 공고 재확인 실행 |
@@ -172,7 +173,7 @@ curl -X POST http://localhost:8000/api/v1/admin/sync \
 {"confirm":"DELETE_ALL"}
 ```
 
-수집 과정에서 출처 하나 또는 일부 공고가 실패해도 성공한 결과는 저장되며 실행 상태는 `PARTIAL_SUCCESS`가 됩니다. 검색 목록에서 사라진 사실만으로 공고를 마감 처리하지 않습니다.
+수집 과정에서 출처 하나 또는 일부 공고가 실패해도 성공한 결과는 저장되며 실행 상태는 `PARTIAL_SUCCESS`가 됩니다. 관리자 중지 요청으로 현재 요청 이후 동기화를 멈추면 `CANCELLED`로 기록합니다. 검색 목록에서 사라진 사실만으로 공고를 마감 처리하지 않습니다.
 
 ### 수집 일정
 

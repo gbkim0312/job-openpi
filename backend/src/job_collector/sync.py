@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime
 
 from sqlalchemy import select
@@ -22,7 +23,11 @@ class SyncService:
         self.commit_batch_size = max(1, commit_batch_size)
 
     async def sync(
-        self, source: str, profile_id: str, profile_ids: list[str] | None = None
+        self,
+        source: str,
+        profile_id: str,
+        profile_ids: list[str] | None = None,
+        cancel_event: asyncio.Event | None = None,
     ) -> CrawlRunRow:
         adapter = self.adapters[source]
         selected_ids = profile_ids or [profile_id]
@@ -58,6 +63,11 @@ class SyncService:
                 unique = {r.source_job_id: r for r in refs}
                 run.searched_count = len(unique)
                 for ref in unique.values():
+                    if cancel_event and cancel_event.is_set():
+                        run.status = "CANCELLED"
+                        run.finished_at = now()
+                        await session.commit()
+                        return run
                     try:
                         raw = await adapter.fetch_detail(ref)
                         values = normalize(
@@ -180,6 +190,8 @@ class SyncService:
                     )
                     run.updated_count += 1
                 run.status = "PARTIAL_SUCCESS" if run.failed_count else "SUCCESS"
+                if cancel_event and cancel_event.is_set():
+                    run.status = "CANCELLED"
                 run.finished_at = now()
                 await session.commit()
                 return run

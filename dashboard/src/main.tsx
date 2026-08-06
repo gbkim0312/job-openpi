@@ -871,6 +871,14 @@ function Settings() {
       setSyncingNow(false);
     }
   };
+  const cancelSync = async () => {
+    try {
+      await request("/v1/admin/sync/cancel", { method: "POST" });
+      setMessage("중지 요청을 보냈습니다. 현재 요청이 끝나면 중지됩니다.");
+    } catch (error) {
+      setMessage(`동기화 중지 실패: ${String(error)}`);
+    }
+  };
   useEffect(() => {
     if (!syncingNow) return;
     let polls = 0;
@@ -970,6 +978,11 @@ function Settings() {
         <button onClick={syncNow} disabled={syncingNow}>
           {syncingNow ? "동기화 요청 중…" : "지금 전체 동기화"}
         </button>
+        {syncingNow && (
+          <button className="danger" onClick={cancelSync}>
+            동기화 중지
+          </button>
+        )}
         {(syncingNow || syncLogs.length > 0) && (
           <div className="sync-log" aria-live="polite">
             <strong>{syncingNow ? "동기화 진행 중" : "동기화 완료"}</strong>

@@ -183,6 +183,7 @@ def create_app() -> FastAPI:
         sessions, adapters, profiles, commit_batch_size=settings.sync_commit_batch_size
     )
     sync_lock = asyncio.Lock()
+    sync_cancel_event = asyncio.Event()
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -492,13 +493,20 @@ def create_app() -> FastAPI:
         async def execute() -> None:
             if sync_lock.locked():
                 return
+            sync_cancel_event.clear()
             async with sync_lock:
-                for source in adapters:
-                    await sync_service.sync(
-                        source,
-                        profile_id,
-                        profile_ids=profile_ids,
-                    )
+                try:
+                    for source in adapters:
+                        await sync_service.sync(
+                            source,
+                            profile_id,
+                            profile_ids=profile_ids,
+                            cancel_event=sync_cancel_event,
+                        )
+                        if sync_cancel_event.is_set():
+                            break
+                finally:
+                    sync_cancel_event.clear()
 
         background_tasks.add_task(execute)
         return {
@@ -522,10 +530,21 @@ def create_app() -> FastAPI:
             if sync_lock.locked():
                 return
             async with sync_lock:
-                await sync_service.sync(source, profile_id)
+                sync_cancel_event.clear()
+                try:
+                    await sync_service.sync(source, profile_id, cancel_event=sync_cancel_event)
+                finally:
+                    sync_cancel_event.clear()
 
         background_tasks.add_task(execute)
         return {"status": "QUEUED", "message": f"{source} 동기화가 백그라운드에서 시작됩니다."}
+
+    @app.post("/api/v1/admin/sync/cancel", dependencies=[Depends(admin)])
+    async def cancel_sync():
+        if not sync_lock.locked():
+            return {"status": "IDLE", "message": "실행 중인 동기화가 없습니다."}
+        sync_cancel_event.set()
+        return {"status": "CANCEL_REQUESTED", "message": "현재 요청 완료 후 동기화를 중지합니다."}
 
     @app.post(
         "/api/v1/admin/sources/{source}/recheck", dependencies=[Depends(admin)], status_code=202
