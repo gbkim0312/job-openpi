@@ -1,7 +1,7 @@
 from datetime import date
 
 from job_collector.domain.model import JobStatus, resolve_status
-from job_collector.domain.services import content_hash, parse_experience
+from job_collector.domain.services import canonical_url, content_hash, parse_experience
 
 TODAY = date(2026, 8, 6)
 
@@ -28,3 +28,9 @@ def test_experience_range():
 
 def test_hash_is_stable():
     assert content_hash({"b": [2, 1], "a": "x"}) == content_hash({"a": "x", "b": [2, 1]})
+
+
+def test_saramin_detail_url_keeps_rec_idx():
+    assert canonical_url(
+        "https://www.saramin.co.kr/zf_user/jobs/relay/view?rec_idx=54596713"
+    ).endswith("/zf_user/jobs/relay/view?rec_idx=54596713")

@@ -26,7 +26,9 @@ CATEGORY_KEYWORDS = {
 
 def canonical_url(url: str) -> str:
     parts = urlsplit(url)
-    return urlunsplit((parts.scheme, parts.netloc, parts.path.rstrip("/"), "", ""))
+    # Saramin's public detail route requires rec_idx in the query string.
+    query = parts.query if parts.netloc.endswith("saramin.co.kr") and "rec_idx=" in parts.query else ""
+    return urlunsplit((parts.scheme, parts.netloc, parts.path.rstrip("/"), query, ""))
 
 
 def parse_experience(raw: str | None) -> tuple[int | None, int | None]:
