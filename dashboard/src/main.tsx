@@ -17,19 +17,24 @@ function Header() { return <header><Link to="/">Job Collector</Link><nav><Link t
 function Overview() { const { data, error } = useQuery({ queryKey: ['summary'], queryFn: () => get('/v1/dashboard/summary') }); if (error) return <p>API 연결 오류</p>; const j = data?.jobs; return <><h1>개요</h1><section className="cards">{[['전체 공고', j?.total], ['활성 공고', j?.active], ['최근 7일 신규', j?.new_last_7_days], ['상태 확인 불가', j?.unknown]].map(([n, v]) => <article key={String(n)}><small>{n}</small><strong>{v ?? '-'}</strong></article>)}</section></>; }
 function Jobs() {
   const [q, setQ] = useState(''); const [region, setRegion] = useState('');
-  const [experience, setExperience] = useState(''); const [employment, setEmployment] = useState('');
-  const [minYears, setMinYears] = useState(''); const [cursor, setCursor] = useState('');
+  const [source, setSource] = useState(''); const [experience, setExperience] = useState('');
+  const [employment, setEmployment] = useState(''); const [minYears, setMinYears] = useState('');
+  const [includeUnknown, setIncludeUnknown] = useState(false); const [cursor, setCursor] = useState('');
   const params = new URLSearchParams({ statuses: 'ACTIVE,CLOSED,UNKNOWN,DELETED', keyword: q, limit: '100' });
-  if (region) params.set('region', region); if (experience) params.set('experience_types', experience);
+  if (source) params.set('sources', source); if (region) params.set('region', region);
+  params.set('experience_types', experience || (includeUnknown ? 'NEWBIE,EXPERIENCED,ANY,UNKNOWN' : 'NEWBIE,EXPERIENCED,ANY'));
   if (employment) params.set('employment_types', employment); if (minYears) params.set('min_experience', minYears);
   if (cursor) params.set('cursor', cursor);
-  const { data, isLoading } = useQuery({ queryKey: ['jobs', q, region, experience, employment, minYears, cursor], queryFn: () => get(`/v1/jobs?${params}`) });
+  const { data, isLoading } = useQuery({ queryKey: ['jobs', q, source, region, experience, employment, minYears, includeUnknown, cursor], queryFn: () => get(`/v1/jobs?${params}`) });
   const reset = (setter: (value: string) => void) => (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => { setter(event.target.value); setCursor(''); };
   return <><h1>공고</h1><section className="job-filters">
-    <input placeholder="회사 또는 포지션 검색" value={q} onChange={reset(setQ)} /><input placeholder="지역 (예: 경기)" value={region} onChange={reset(setRegion)} />
+    <input placeholder="회사 또는 포지션 검색" value={q} onChange={reset(setQ)} />
+    <select value={source} onChange={reset(setSource)}><option value="">출처 전체</option><option value="WANTED">WANTED</option><option value="SARAMIN">SARAMIN</option><option value="JOBKOREA">JOBKOREA</option></select>
+    <input placeholder="지역 (예: 경기)" value={region} onChange={reset(setRegion)} />
     <select value={experience} onChange={reset(setExperience)}><option value="">신입·경력 전체</option><option value="NEWBIE">신입</option><option value="EXPERIENCED">경력</option><option value="ANY">신입·경력</option></select>
     <select value={employment} onChange={reset(setEmployment)}><option value="">고용 형태 전체</option><option value="정규직">정규직</option><option value="계약직">계약직</option><option value="인턴">인턴</option></select>
     <input type="number" min="0" placeholder="최소 경력(년)" value={minYears} onChange={reset(setMinYears)} />
+    <label><input type="checkbox" checked={includeUnknown} onChange={event => { setIncludeUnknown(event.target.checked); setCursor(''); }} /> UNKNOWN 경력 포함</label>
   </section>{isLoading ? <p>불러오는 중…</p> : <><p>{data?.items.length ?? 0}건 표시</p><table><thead><tr><th>회사</th><th>포지션</th><th>출처</th><th>상태</th><th>지역</th><th>경력</th><th>고용 형태</th></tr></thead><tbody>{data?.items.map((x: any) => <tr key={x.id}><td>{x.company_name}</td><td><a href={x.url} target="_blank">{x.title}</a></td><td>{x.source}</td><td><span className={'badge ' + x.effective_status}>{x.effective_status}</span></td><td>{x.region || x.location_raw || '-'}</td><td>{x.experience.type} {x.experience.raw || '-'}</td><td>{x.employment_type || '-'}</td></tr>)}</tbody></table>{data?.page?.next_cursor && <button onClick={() => setCursor(data.page.next_cursor)}>다음 100건 불러오기</button>}</>}</>;
 }
 function Simple({ path, title }: { path: string; title: string }) { const { data } = useQuery({ queryKey: [path], queryFn: () => get(path) }); return <><h1>{title}</h1><pre>{JSON.stringify(data, null, 2)}</pre></>; }
