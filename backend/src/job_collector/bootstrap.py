@@ -21,6 +21,8 @@ class Settings(BaseSettings):
     saramin_access_key: str | None = Field(None, alias="SARAMIN_ACCESS_KEY")
     saramin_base_url: str = Field("https://oapi.saramin.co.kr", alias="SARAMIN_BASE_URL")
     jobkorea_enabled: bool = Field(False, alias="JOBKOREA_ENABLED")
+    jobkorea_base_url: str = Field("https://www.jobkorea.co.kr", alias="JOBKOREA_BASE_URL")
+    jobkorea_request_delay_seconds: float = Field(1.5, alias="JOBKOREA_REQUEST_DELAY_SECONDS")
     http_timeout_seconds: float = Field(20, alias="HTTP_TIMEOUT_SECONDS")
     http_max_retries: int = Field(3, alias="HTTP_MAX_RETRIES")
     scheduler_enabled: bool = Field(False, alias="SCHEDULER_ENABLED")

@@ -33,7 +33,7 @@ from ....runtime_settings import (
     save_schedule_settings,
     seed_schedule_settings,
 )
-from ....sources import SaraminJobSourceAdapter, WantedJobSourceAdapter
+from ....sources import JobKoreaJobSourceAdapter, SaraminJobSourceAdapter, WantedJobSourceAdapter
 from ....sync import SyncService
 
 
@@ -112,6 +112,12 @@ def create_app() -> FastAPI:
     if settings.saramin_enabled and settings.saramin_access_key:
         adapters["SARAMIN"] = SaraminJobSourceAdapter(
             settings.saramin_access_key, settings.http_timeout_seconds, base_url=settings.saramin_base_url
+        )
+    if settings.jobkorea_enabled:
+        adapters["JOBKOREA"] = JobKoreaJobSourceAdapter(
+            settings.jobkorea_base_url,
+            settings.http_timeout_seconds,
+            settings.jobkorea_request_delay_seconds,
         )
     sync_service = SyncService(sessions, adapters, profiles)
 
@@ -332,9 +338,13 @@ def create_app() -> FastAPI:
                 },
                 {
                     "source": "JOBKOREA",
-                    "enabled": False,
-                    "status": "DISABLED",
-                    "disabled_reason": "adapter is not configured",
+                    "enabled": "JOBKOREA" in adapters,
+                    "status": "HEALTHY" if "JOBKOREA" in adapters else "DISABLED",
+                    "disabled_reason": "adapter is not configured" if "JOBKOREA" not in adapters else None,
+                    "capabilities": {
+                        "keyword_search": True, "incremental_sync": True, "status_check": True,
+                        "posted_date": True, "deadline": True,
+                    },
                 },
             ]
         }

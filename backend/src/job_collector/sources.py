@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from datetime import UTC, datetime
+from urllib.parse import urljoin
 
 import httpx
 from bs4 import BeautifulSoup
@@ -91,6 +93,109 @@ class WantedJobSourceAdapter(JobSourcePort):
     async def fetch_detail(self, reference: SourceJobReference) -> SourceJobPosting:
         html = await self._get(reference.url)
         return parse_wanted_detail(html, reference, datetime.now(UTC))
+
+
+class JobKoreaJobSourceAdapter(JobSourcePort):
+    """Public JobKorea search/detail pages, with conservative request pacing."""
+
+    def __init__(self, base_url: str, timeout: float = 20, delay: float = 1.5):
+        self.base_url, self.timeout, self.delay = base_url.rstrip("/"), timeout, delay
+        self._last_request = 0.0
+
+    @property
+    def source(self):
+        return JobSource.JOBKOREA
+
+    @property
+    def capabilities(self):
+        return SourceCapabilities(True, True, True, True, True)
+
+    async def _get(self, url: str, params: dict[str, object] | None = None) -> str:
+        pause = self.delay - (asyncio.get_running_loop().time() - self._last_request)
+        if pause > 0:
+            await asyncio.sleep(pause)
+        async with httpx.AsyncClient(
+            timeout=self.timeout,
+            headers={"User-Agent": "job-collector/0.1 (+public-page-collector)"},
+            follow_redirects=True,
+        ) as client:
+            response = await client.get(url, params=params)
+            self._last_request = asyncio.get_running_loop().time()
+        if response.status_code == 404:
+            raise SourceNotFoundError(url)
+        response.raise_for_status()
+        return response.text
+
+    async def search(self, query: SourceSearchQuery) -> Sequence[SourceJobReference]:
+        html = await self._get(f"{self.base_url}/Search/", {"stext": query.query})
+        soup = BeautifulSoup(html, "lxml")
+        refs: dict[str, SourceJobReference] = {}
+        pattern = re.compile(r"/Recruit/GI_Read/(\d+)")
+        for anchor in soup.select("a[href]"):
+            href = str(anchor.get("href") or "")
+            match = pattern.search(href)
+            if match:
+                job_id = match.group(1)
+                refs[job_id] = SourceJobReference(
+                    self.source, job_id, urljoin(self.base_url, href.split("?")[0])
+                )
+        start = max(0, (query.page - 1) * query.page_size)
+        return list(refs.values())[start : start + query.page_size]
+
+    async def fetch_detail(self, reference: SourceJobReference) -> SourceJobPosting:
+        html = await self._get(reference.url)
+        return parse_jobkorea_detail(html, reference, datetime.now(UTC))
+
+
+def parse_jobkorea_detail(
+    html: str, reference: SourceJobReference, fetched_at: datetime
+) -> SourceJobPosting:
+    soup = BeautifulSoup(html, "lxml")
+    json_ld: dict[str, object] = {}
+    for script in soup.select('script[type="application/ld+json"]'):
+        try:
+            candidate = json.loads(script.string or "")
+        except json.JSONDecodeError:
+            continue
+        candidates = candidate if isinstance(candidate, list) else [candidate]
+        json_ld = next(
+            (x for x in candidates if isinstance(x, dict) and x.get("@type") == "JobPosting"),
+            json_ld,
+        )
+    title = str(json_ld.get("title") or "")
+    company_data = json_ld.get("hiringOrganization")
+    company = company_data.get("name") if isinstance(company_data, dict) else None
+    heading = soup.select_one("h1, .tit_job")
+    title = title or (heading.get_text(strip=True) if heading else "")
+    og_title = soup.select_one('meta[property="og:title"]')
+    if not title and og_title and og_title.get("content"):
+        title = str(og_title["content"]).split(" 채용 - ", 1)[-1].split(" | 잡코리아", 1)[0]
+    if not company:
+        writer = soup.select_one('meta[name="writer"]')
+        company = str(writer["content"]).strip() if writer and writer.get("content") else None
+    if not title:
+        raise SourceParseError("JobKorea job title unavailable")
+    location_data = json_ld.get("jobLocation")
+    address = location_data.get("address") if isinstance(location_data, dict) else None
+    location = address.get("streetAddress") if isinstance(address, dict) else None
+    experience = str(json_ld.get("experienceRequirements") or "") or None
+    employment = str(json_ld.get("employmentType") or "") or None
+    deadline = str(json_ld.get("validThrough") or "") or None
+    posted = None
+    if json_ld.get("datePosted"):
+        try:
+            posted = datetime.fromisoformat(str(json_ld["datePosted"]).replace("Z", "+00:00"))
+        except ValueError:
+            pass
+    raw = soup.get_text(" ", strip=True)
+    closed = any(marker in raw for marker in ("채용 마감", "접수 마감", "공고가 종료"))
+    return SourceJobPosting(
+        reference.source, reference.source_job_id, reference.url, title, company,
+        raw_location=location, raw_experience=experience, raw_employment_type=employment,
+        raw_deadline=deadline, raw_status="closed" if closed else "active",
+        posted_at=posted, fetched_at=fetched_at,
+        raw_payload={"json_ld": json_ld, "has_apply_action": not closed},
+    )
 
 
 class SaraminJobSourceAdapter(JobSourcePort):
