@@ -130,6 +130,7 @@ function Jobs() {
   const [sortField, setSortField] = useState("deadline_date");
   const [sortDirection, setSortDirection] = useState("asc");
   const [cursor, setCursor] = useState("");
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const params = new URLSearchParams({
     statuses: "ACTIVE,CLOSED,UNKNOWN,DELETED",
     keyword: q,
@@ -163,6 +164,11 @@ function Jobs() {
       cursor,
     ],
     queryFn: () => get(`/v1/jobs?${params}`),
+  });
+  const { data: selectedJob, isLoading: detailLoading, error: detailError } = useQuery({
+    queryKey: ["job-detail", selectedId],
+    queryFn: () => get(`/v1/jobs/${selectedId}`),
+    enabled: Boolean(selectedId),
   });
   const reset =
     (setter: (value: string) => void) =>
@@ -261,9 +267,9 @@ function Jobs() {
                 <tr key={x.id}>
                   <td>{x.company_name}</td>
                   <td>
-                    <a href={x.url} target="_blank">
+                    <button className="job-title" onClick={() => setSelectedId(x.id)}>
                       {x.title}
-                    </a>
+                    </button>
                   </td>
                   <td>{x.source}</td>
                   <td>
@@ -288,7 +294,49 @@ function Jobs() {
           )}
         </>
       )}
+      {selectedId && (
+        <div className="modal-backdrop" onClick={() => setSelectedId(null)}>
+          <section className="job-modal" onClick={(event) => event.stopPropagation()}>
+            <button className="modal-close" onClick={() => setSelectedId(null)} aria-label="닫기">
+              ×
+            </button>
+            {detailLoading && <p>상세 정보를 불러오는 중…</p>}
+            {detailError && <p>상세 정보를 불러오지 못했습니다.</p>}
+            {selectedJob && (
+              <>
+                <small>{selectedJob.source}</small>
+                <h2>{selectedJob.title}</h2>
+                <p className="job-company">{selectedJob.company_name}</p>
+                <dl className="job-detail-meta">
+                  <dt>상태</dt><dd>{selectedJob.effective_status}</dd>
+                  <dt>지역</dt><dd>{selectedJob.region || selectedJob.location_raw || "-"}</dd>
+                  <dt>경력</dt><dd>{experienceLabel(selectedJob.experience)}</dd>
+                  <dt>고용 형태</dt><dd>{selectedJob.employment_type || "-"}</dd>
+                  <dt>마감일</dt><dd>{deadlineLabel(selectedJob.deadline)}</dd>
+                </dl>
+                <DetailList title="주요 업무" items={selectedJob.responsibilities} />
+                <DetailList title="자격 요건" items={selectedJob.requirements} />
+                <DetailList title="우대 사항" items={selectedJob.preferred_qualifications} />
+                <button
+                  onClick={() => window.open(selectedJob.url, "_blank", "noopener,noreferrer")}
+                >
+                  공고 확인
+                </button>
+              </>
+            )}
+          </section>
+        </div>
+      )}
     </>
+  );
+}
+function DetailList({ title, items }: { title: string; items?: string[] }) {
+  if (!items?.length) return null;
+  return (
+    <section className="job-detail-section">
+      <h3>{title}</h3>
+      <ul>{items.map((item, index) => <li key={`${title}-${index}`}>{item}</li>)}</ul>
+    </section>
   );
 }
 function Simple({ path, title }: { path: string; title: string }) {
