@@ -12,6 +12,20 @@ docker compose up --build
 
 대시보드는 `http://localhost:8080`, OpenAPI 문서는 `http://localhost:8080/docs`에서 볼 수 있습니다. 개발 중 API 포트가 필요하면 compose의 `api` 서비스에 `8000:8000` 포트를 추가하세요.
 
+### 미리 빌드한 이미지로 실행
+
+소스 빌드 없이 로컬 이미지를 사용하려면 다음을 실행합니다.
+
+```sh
+docker build -t job-collector-backend:local ./backend
+docker build -t job-collector-dashboard:local ./dashboard
+cp .env.images.example .env.images
+# .env.images의 POSTGRES_PASSWORD와 ADMIN_API_KEY를 변경
+docker compose --env-file .env.images -f compose.images.yml up -d
+```
+
+`BACKEND_IMAGE`, `DASHBOARD_IMAGE`에 레지스트리 이미지 태그를 넣으면 같은 Compose 파일로 원격 이미지도 실행할 수 있습니다. 이 구성은 `build:`를 사용하지 않으며 API는 외부 포트를 열지 않고 대시보드만 `${DASHBOARD_PORT}`로 공개합니다.
+
 ## API 문서
 
 실행 중인 서버의 자동 생성 문서는 다음 주소에서 제공합니다.
