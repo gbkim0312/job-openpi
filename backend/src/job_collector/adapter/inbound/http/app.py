@@ -33,7 +33,12 @@ from ....runtime_settings import (
     save_schedule_settings,
     seed_schedule_settings,
 )
-from ....sources import JobKoreaJobSourceAdapter, SaraminJobSourceAdapter, WantedJobSourceAdapter
+from ....sources import (
+    JobKoreaJobSourceAdapter,
+    SaraminJobSourceAdapter,
+    SaraminPublicJobSourceAdapter,
+    WantedJobSourceAdapter,
+)
 from ....sync import SyncService
 
 
@@ -112,6 +117,12 @@ def create_app() -> FastAPI:
     if settings.saramin_enabled and settings.saramin_access_key:
         adapters["SARAMIN"] = SaraminJobSourceAdapter(
             settings.saramin_access_key, settings.http_timeout_seconds, base_url=settings.saramin_base_url
+        )
+    elif settings.saramin_public_enabled:
+        adapters["SARAMIN"] = SaraminPublicJobSourceAdapter(
+            settings.saramin_public_base_url,
+            settings.http_timeout_seconds,
+            settings.saramin_public_request_delay_seconds,
         )
     if settings.jobkorea_enabled:
         adapters["JOBKOREA"] = JobKoreaJobSourceAdapter(
@@ -326,7 +337,9 @@ def create_app() -> FastAPI:
                     "enabled": "SARAMIN" in adapters,
                     "status": "HEALTHY" if "SARAMIN" in adapters else "DISABLED",
                     "disabled_reason": (
-                        "access key is not configured" if "SARAMIN" not in adapters else None
+                        "API access key and public-page mode are not configured"
+                        if "SARAMIN" not in adapters
+                        else None
                     ),
                     "capabilities": {
                         "keyword_search": True,

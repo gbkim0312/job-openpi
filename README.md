@@ -89,6 +89,8 @@ curl http://localhost:8000/ready
 
 사람인 공식 Open API의 `job-search` 엔드포인트를 사용합니다. 사람인 개발자센터에서 발급받은 인증키를 `.env`의 `SARAMIN_ACCESS_KEY`에 넣고 `SARAMIN_ENABLED=true`로 설정하면 동기화 대상에 포함됩니다. `SARAMIN_BASE_URL`은 기본값(`https://oapi.saramin.co.kr`)을 그대로 사용하면 됩니다. 검색 응답에 포함된 공고 정보(제목·회사·지역·고용형태·경력·게시/마감일·키워드)만 저장하며, 공식 검색 API가 제공하지 않는 상세 본문은 비워 둡니다.
 
+사람인 인증키 없이 사용하려면 `SARAMIN_PUBLIC_ENABLED=true`를 설정합니다. 이 경우 사람인 공개 검색·상세 페이지를 직접 조회하며 `SARAMIN_PUBLIC_REQUEST_DELAY_SECONDS`로 요청 간격을 조절합니다. `SARAMIN_ENABLED=true`와 유효한 API 키가 함께 설정되면 공식 API 방식이 우선됩니다.
+
 잡코리아는 `JOBKOREA_ENABLED=true`로 공개 검색/상세 페이지 수집을 활성화할 수 있습니다. 공개 HTML과 JSON-LD에 노출된 정보만 사용하며, 요청 간격은 `JOBKOREA_REQUEST_DELAY_SECONDS`로 조정합니다. 사이트 정책 변경이나 접근 제한 시 해당 공고만 실패 처리될 수 있습니다.
 
 ```sh

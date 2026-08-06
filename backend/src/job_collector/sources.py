@@ -147,6 +147,95 @@ class JobKoreaJobSourceAdapter(JobSourcePort):
         return parse_jobkorea_detail(html, reference, datetime.now(UTC))
 
 
+class SaraminPublicJobSourceAdapter(JobSourcePort):
+    """Public Saramin search/detail pages; no API key or private endpoint is used."""
+
+    def __init__(self, base_url: str, timeout: float = 20, delay: float = 1.5):
+        self.base_url, self.timeout, self.delay = base_url.rstrip("/"), timeout, delay
+        self._last_request = 0.0
+
+    @property
+    def source(self):
+        return JobSource.SARAMIN
+
+    @property
+    def capabilities(self):
+        return SourceCapabilities(True, True, True, True, True)
+
+    async def _get(self, url: str, params: dict[str, object] | None = None) -> str:
+        pause = self.delay - (asyncio.get_running_loop().time() - self._last_request)
+        if pause > 0:
+            await asyncio.sleep(pause)
+        async with httpx.AsyncClient(
+            timeout=self.timeout,
+            headers={"User-Agent": "job-collector/0.1 (+public-page-collector)"},
+            follow_redirects=True,
+        ) as client:
+            response = await client.get(url, params=params)
+            self._last_request = asyncio.get_running_loop().time()
+        if response.status_code == 404:
+            raise SourceNotFoundError(url)
+        response.raise_for_status()
+        return response.text
+
+    async def search(self, query: SourceSearchQuery) -> Sequence[SourceJobReference]:
+        html = await self._get(
+            f"{self.base_url}/zf_user/search", {"searchword": query.query, "recruitPage": query.page}
+        )
+        soup = BeautifulSoup(html, "lxml")
+        refs: dict[str, SourceJobReference] = {}
+        pattern = re.compile(r"/zf_user/jobs/relay/view[^\"']*?rec_idx(?:=|%3D)(\d+)")
+        for anchor in soup.select("a[href]"):
+            href = str(anchor.get("href") or "").replace("&amp;", "&")
+            match = pattern.search(href)
+            if match:
+                job_id = match.group(1)
+                refs[job_id] = SourceJobReference(
+                    self.source,
+                    job_id,
+                    f"{self.base_url}/zf_user/jobs/relay/view?rec_idx={job_id}",
+                )
+        start = max(0, (query.page - 1) * query.page_size)
+        return list(refs.values())[start : start + query.page_size]
+
+    async def fetch_detail(self, reference: SourceJobReference) -> SourceJobPosting:
+        html = await self._get(reference.url)
+        return parse_saramin_public_detail(html, reference, datetime.now(UTC))
+
+
+def parse_saramin_public_detail(
+    html: str, reference: SourceJobReference, fetched_at: datetime
+) -> SourceJobPosting:
+    soup = BeautifulSoup(html, "lxml")
+    og_title = soup.select_one('meta[property="og:title"]')
+    title_text = str(og_title.get("content") or "") if og_title else ""
+    title = title_text.split("] ", 1)[-1].split(" - 사람인", 1)[0].strip()
+    description = soup.select_one('meta[name="description"]')
+    summary = str(description.get("content") or "") if description else ""
+    company = summary.split(",", 1)[0].strip() or None
+    if not title:
+        heading = soup.select_one("h1, .jv_title")
+        title = heading.get_text(" ", strip=True) if heading else ""
+    if not title:
+        raise SourceParseError("Saramin public job title unavailable")
+    deadline_match = re.search(r"마감일\s*:?\s*(\d{4}[-.]\d{1,2}[-.]\d{1,2})", summary)
+    experience_match = re.search(r"경력\s*:?\s*([^,]+)", summary)
+    raw_text = soup.get_text(" ", strip=True)
+    closed = any(marker in raw_text for marker in ("채용 마감", "접수 마감", "모집 마감"))
+    return SourceJobPosting(
+        reference.source,
+        reference.source_job_id,
+        reference.url,
+        title,
+        company,
+        raw_experience=experience_match.group(1).strip() if experience_match else None,
+        raw_deadline=deadline_match.group(1) if deadline_match else None,
+        raw_status="closed" if closed else "active",
+        fetched_at=fetched_at,
+        raw_payload={"meta_description": summary, "has_apply_action": not closed},
+    )
+
+
 def parse_jobkorea_detail(
     html: str, reference: SourceJobReference, fetched_at: datetime
 ) -> SourceJobPosting:
