@@ -61,6 +61,10 @@ class CorporateCareerSourceAdapter(JobSourcePort):
     def capabilities(self):
         return SourceCapabilities(True, True, True, True, True)
 
+    @property
+    def profile_independent(self):
+        return True
+
     async def _get(self, url: str) -> str:
         pause = self.delay - (asyncio.get_running_loop().time() - self._last_request)
         if pause > 0:
@@ -111,6 +115,63 @@ class CorporateCareerSourceAdapter(JobSourcePort):
         company = company or (writer.get("content") if writer else None)
         raw = soup.get_text(" ", strip=True)
         return SourceJobPosting(self.source, reference.source_job_id, reference.url, title, company, raw_status="closed" if any(x in raw for x in ("채용 마감", "접수 마감", "마감된 공고")) else "active", fetched_at=datetime.now(UTC), raw_payload={"has_apply_action": True})
+
+
+class LgCareerSourceAdapter(CorporateCareerSourceAdapter):
+    """LG Careers public listing service used by its careers web application."""
+
+    def __init__(self, timeout: float = 20, delay: float = 1.5):
+        super().__init__(JobSource.LG, "https://careers.lg.com/apply", timeout, delay)
+        self._items: dict[str, dict[str, object]] = {}
+
+    async def search(self, query: SourceSearchQuery) -> Sequence[SourceJobReference]:
+        pause = self.delay - (asyncio.get_running_loop().time() - self._last_request)
+        if pause > 0:
+            await asyncio.sleep(pause)
+        payload = {
+            "lnbSearch": query.query,
+            "hashTagText": "",
+            "recDate": "CREATION_DATE",
+            "order": "DESC",
+            "careerList": [],
+            "companyCodeList": [],
+            "desireLocList": [],
+            "jobGroupList": [],
+        }
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            response = await client.post("https://api.careers.lg.com/rmk/job/retrieveJobNoticesList", json=payload)
+            self._last_request = asyncio.get_running_loop().time()
+        response.raise_for_status()
+        data = response.json().get("data", {})
+        items = data.get("jobNoticeList", []) if isinstance(data, dict) else []
+        if isinstance(items, dict):
+            items = [items]
+        refs = []
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            job_id = str(item.get("jobNoticeId") or "")
+            if job_id:
+                self._items[job_id] = item
+                refs.append(SourceJobReference(self.source, job_id, f"https://careers.lg.com/apply/detail?id={job_id}"))
+        return refs[: query.page_size]
+
+    async def fetch_detail(self, reference: SourceJobReference) -> SourceJobPosting:
+        item = self._items.get(reference.source_job_id, {})
+        if not item:
+            raise SourceNotFoundError(reference.url)
+        return SourceJobPosting(
+            self.source,
+            reference.source_job_id,
+            reference.url,
+            str(item.get("jobNoticeName") or "LG 채용 공고"),
+            str(item.get("companyName") or "LG"),
+            raw_experience=str(item.get("careerTypeName") or "") or None,
+            raw_deadline=str(item.get("recEndDateTime") or "") or None,
+            raw_status="active" if item.get("noticeStatus") == "POSTING" else "closed",
+            fetched_at=datetime.now(UTC),
+            raw_payload={"lg": item, "has_apply_action": item.get("recAvail") == 1},
+        )
 
 
 class WantedJobSourceAdapter(JobSourcePort):

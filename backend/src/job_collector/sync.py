@@ -22,7 +22,7 @@ class SyncService:
             await session.commit()
             try:
                 refs = []
-                queries = profile.source_queries.get(source, profile.queries)
+                queries = [""] if getattr(adapter, "profile_independent", False) else profile.source_queries.get(source, profile.queries)
                 for query in queries:
                     refs.extend(await adapter.search(SourceSearchQuery(query=query)))
                 unique = {r.source_job_id: r for r in refs}

@@ -37,6 +37,7 @@ from ....runtime_settings import (
 from ....sources import (
     CorporateCareerSourceAdapter,
     JobKoreaJobSourceAdapter,
+    LgCareerSourceAdapter,
     SaraminJobSourceAdapter,
     SaraminPublicJobSourceAdapter,
     WantedJobSourceAdapter,
@@ -139,7 +140,11 @@ def create_app() -> FastAPI:
     }
     for source, (enabled, listing_url) in corporate_sites.items():
         if enabled:
-            adapters[source] = CorporateCareerSourceAdapter(JobSource(source), listing_url, settings.http_timeout_seconds)
+            adapters[source] = (
+                LgCareerSourceAdapter(settings.http_timeout_seconds)
+                if source == "LG"
+                else CorporateCareerSourceAdapter(JobSource(source), listing_url, settings.http_timeout_seconds)
+            )
     sync_service = SyncService(sessions, adapters, profiles)
     sync_lock = asyncio.Lock()
 
