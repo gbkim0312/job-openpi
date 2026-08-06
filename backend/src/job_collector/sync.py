@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 
 from .domain.model import JobChangeType, JobStatus, SourceSearchQuery
-from .domain.services import content_hash, normalize
+from .domain.services import content_hash, json_safe, normalize
 from .persistence import CrawlRunRow, JobPostingRow, JobSnapshotRow, get_by_source, now
 
 
@@ -53,7 +53,7 @@ class SyncService:
                                     change_type=JobChangeType.CREATED.value,
                                     current_status=row.detected_status,
                                     content_hash=digest,
-                                    snapshot=values,
+                                    snapshot=json_safe(values),
                                 )
                             )
                             run.created_count += 1
@@ -83,7 +83,7 @@ class SyncService:
                                         current_status=existing.detected_status,
                                         changed_fields=changed,
                                         content_hash=digest,
-                                        snapshot=values,
+                                        snapshot=json_safe(values),
                                     )
                                 )
                                 run.updated_count += 1

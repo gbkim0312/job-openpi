@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from datetime import date
+from datetime import date, datetime
 from urllib.parse import urlsplit, urlunsplit
 
 from .model import JobCategory, SourceJobPosting, resolve_status
@@ -86,6 +86,17 @@ def content_hash(fields: dict[str, object]) -> str:
         fields, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str
     )
     return hashlib.sha256(normalized.encode()).hexdigest()
+
+
+def json_safe(value: object) -> object:
+    """Make normalized snapshots safe for JSONB/JSON serialization."""
+    if isinstance(value, (date, datetime)):
+        return value.isoformat()
+    if isinstance(value, dict):
+        return {str(key): json_safe(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple, set)):
+        return [json_safe(item) for item in value]
+    return value
 
 
 def normalize(

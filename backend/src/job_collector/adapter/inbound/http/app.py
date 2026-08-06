@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ....bootstrap import Settings
 from ....domain.model import JobChangeType, SourceJobReference
-from ....domain.services import content_hash, normalize
+from ....domain.services import content_hash, json_safe, normalize
 from ....persistence import (
     Base,
     CrawlRunRow,
@@ -391,7 +391,7 @@ def create_app() -> FastAPI:
                     current_status=row.detected_status,
                     changed_fields=changed_fields,
                     content_hash=digest,
-                    snapshot=values,
+                    snapshot=json_safe(values),
                 )
             )
         await session.commit()
