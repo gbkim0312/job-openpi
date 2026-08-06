@@ -151,6 +151,21 @@ curl -X POST http://localhost:8000/api/v1/admin/sync \
 
 수집 과정에서 출처 하나 또는 일부 공고가 실패해도 성공한 결과는 저장되며 실행 상태는 `PARTIAL_SUCCESS`가 됩니다. 검색 목록에서 사라진 사실만으로 공고를 마감 처리하지 않습니다.
 
+### 수집 일정
+
+대시보드 **설정**에서 Cron 형식(분 시 일 월 요일)으로 검색 동기화와 재확인 일정을 변경할 수 있습니다. 설정은 PostgreSQL에 저장되며 Scheduler 컨테이너가 최대 30초 안에 반영합니다.
+
+| Method | Path | 설명 |
+| --- | --- | --- |
+| `GET` | `/api/v1/admin/settings/schedule` | 현재 수집 일정 조회 |
+| `PUT` | `/api/v1/admin/settings/schedule` | 수집 일정 변경 |
+
+```json
+{"sync_cron":"0 2 * * *","recheck_cron":"0 3 * * *"}
+```
+
+완료된 출처 검색에서 기존 `ACTIVE` 공고가 보이지 않으면 마감으로 단정하지 않고 `UNKNOWN`으로 전환하며 변경 이력을 남깁니다. 이후 출처가 명시적 마감·삭제·활성 상태를 제공할 때 각각 `CLOSED`·`DELETED`·`ACTIVE`로 갱신됩니다.
+
 ### 프로필 관리
 
 기본 YAML 프로필은 최초 시작 시 DB에 시드됩니다. 이후 대시보드의 **프로필** 화면에서 관리자 키를 입력한 세션으로 프로필을 추가·수정·삭제할 수 있으며, 변경 내용은 PostgreSQL에 영속화됩니다.

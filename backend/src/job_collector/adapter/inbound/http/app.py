@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
+from apscheduler.triggers.cron import CronTrigger
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -23,6 +24,12 @@ from ....persistence import (
     session_factory,
 )
 from ....profiles import ProfileStore, SearchProfile
+from ....runtime_settings import (
+    ScheduleSettings,
+    load_schedule_settings,
+    save_schedule_settings,
+    seed_schedule_settings,
+)
 from ....sources import WantedJobSourceAdapter
 from ....sync import SyncService
 
@@ -30,6 +37,11 @@ from ....sync import SyncService
 class SyncRequest(BaseModel):
     profile: str | None = None
     mode: str = "incremental"
+
+
+class ScheduleRequest(BaseModel):
+    sync_cron: str
+    recheck_cron: str
 
 
 def row_dict(row: JobPostingRow, detail: bool = False) -> dict:
@@ -102,6 +114,7 @@ def create_app() -> FastAPI:
                 await connection.run_sync(Base.metadata.create_all)
         async with sessions() as session:
             await profiles.seed_and_load(session)
+            await seed_schedule_settings(session, settings.sync_cron, settings.recheck_cron)
         app.state.settings, app.state.sessions, app.state.profiles, app.state.sync = (
             settings,
             sessions,
@@ -379,6 +392,24 @@ def create_app() -> FastAPI:
     async def reload_profiles(session: AsyncSession = Depends(db)):
         await profiles.seed_and_load(session)
         return {"status": "reloaded", "count": len(profiles.items)}
+
+    @app.get("/api/v1/admin/settings/schedule", dependencies=[Depends(admin)])
+    async def get_schedule(session: AsyncSession = Depends(db)):
+        value = await load_schedule_settings(session)
+        return {"sync_cron": value.sync_cron, "recheck_cron": value.recheck_cron}
+
+    @app.put("/api/v1/admin/settings/schedule", dependencies=[Depends(admin)])
+    async def update_schedule(payload: ScheduleRequest, session: AsyncSession = Depends(db)):
+        try:
+            CronTrigger.from_crontab(payload.sync_cron)
+            CronTrigger.from_crontab(payload.recheck_cron)
+        except ValueError as exc:
+            raise HTTPException(400, "cron must have five valid fields") from exc
+        await save_schedule_settings(
+            session,
+            ScheduleSettings(sync_cron=payload.sync_cron, recheck_cron=payload.recheck_cron),
+        )
+        return {"sync_cron": payload.sync_cron, "recheck_cron": payload.recheck_cron}
 
     @app.get("/api/v1/admin/crawl-runs", dependencies=[Depends(admin)])
     async def crawl_runs(session: AsyncSession = Depends(db)):

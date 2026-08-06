@@ -116,6 +116,13 @@ class SearchProfileRow(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)
 
 
+class RuntimeSettingRow(Base):
+    __tablename__ = "runtime_settings"
+    key: Mapped[str] = mapped_column(String(100), primary_key=True)
+    value: Mapped[str] = mapped_column(Text)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)
+
+
 def session_factory(url: str) -> async_sessionmaker[AsyncSession]:
     return async_sessionmaker(create_async_engine(url, pool_pre_ping=True), expire_on_commit=False)
 

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+from sqlalchemy import select
+
 from .domain.model import JobChangeType, JobStatus, SourceSearchQuery
 from .domain.services import content_hash, normalize
 from .persistence import CrawlRunRow, JobPostingRow, JobSnapshotRow, get_by_source, now
@@ -90,6 +92,40 @@ class SyncService:
                     except Exception as exc:  # noqa: BLE001 - source failures must be isolated
                         run.failed_count += 1
                         run.error_summary[ref.url] = type(exc).__name__
+                # A completed source search no longer contains this previously active
+                # posting. It is not proof of closure, so preserve it as UNKNOWN.
+                missing = (
+                    await session.execute(
+                        select(JobPostingRow).where(
+                            JobPostingRow.source == source,
+                            JobPostingRow.detected_status == JobStatus.ACTIVE.value,
+                            JobPostingRow.source_job_id.not_in(unique),
+                        )
+                    )
+                ).scalars()
+                for posting in missing:
+                    previous_hash = posting.content_hash
+                    posting.detected_status = JobStatus.UNKNOWN.value
+                    posting.status_reason = "not returned by completed source search"
+                    posting.last_checked_at = now()
+                    posting.content_hash = content_hash(
+                        {"previous_hash": previous_hash, "status": "UNKNOWN"}
+                    )
+                    session.add(
+                        JobSnapshotRow(
+                            job_posting_id=posting.id,
+                            change_type=JobChangeType.STATUS_CHANGED.value,
+                            previous_status=JobStatus.ACTIVE.value,
+                            current_status=JobStatus.UNKNOWN.value,
+                            changed_fields=["detected_status", "status_reason"],
+                            content_hash=posting.content_hash,
+                            snapshot={
+                                "detected_status": JobStatus.UNKNOWN.value,
+                                "status_reason": posting.status_reason,
+                            },
+                        )
+                    )
+                    run.updated_count += 1
                 run.status = "PARTIAL_SUCCESS" if run.failed_count else "SUCCESS"
                 run.finished_at = now()
                 await session.commit()
