@@ -204,20 +204,24 @@ class WantedJobSourceAdapter(JobSourcePort):
         return response.text
 
     async def search(self, query: SourceSearchQuery) -> Sequence[SourceJobReference]:
-        payload = json.loads(
-            await self._get(
-                f"{self.base_url}/api/chaos/search/v1/position",
-                {"query": query.query, "page": query.page},
-            )
-        )
         refs: dict[str, SourceJobReference] = {}
-        for item in payload.get("data", []):
-            job_id = str(item.get("id", ""))
-            if job_id:
-                refs[job_id] = SourceJobReference(
-                    self.source, job_id, f"{self.base_url}/wd/{job_id}"
+        for page in range(max(1, query.page), max(1, query.page) + 5):
+            payload = json.loads(
+                await self._get(
+                    f"{self.base_url}/api/chaos/search/v1/position",
+                    {"query": query.query, "page": page},
                 )
-        return list(refs.values())[: query.page_size]
+            )
+            items = payload.get("data", [])
+            for item in items:
+                job_id = str(item.get("id", ""))
+                if job_id:
+                    refs[job_id] = SourceJobReference(
+                        self.source, job_id, f"{self.base_url}/wd/{job_id}"
+                    )
+            if not items or len(refs) >= int(payload.get("total_count") or len(refs)):
+                break
+        return list(refs.values())
 
     async def fetch_detail(self, reference: SourceJobReference) -> SourceJobPosting:
         html = await self._get(reference.url)

@@ -251,6 +251,7 @@ type Profile = {
   include_keywords: string[];
   exclude_keywords: string[];
   source_queries: Record<string, string[]>;
+  company_queries?: Record<string, string[]>;
 };
 const blank: Profile = {
   id: "",
@@ -259,6 +260,7 @@ const blank: Profile = {
   include_keywords: [],
   exclude_keywords: [],
   source_queries: { WANTED: [] },
+  company_queries: { WANTED: [] },
 };
 const lines = (value: string) =>
   value
@@ -368,6 +370,22 @@ function Profiles() {
                 ...form,
                 source_queries: {
                   ...form.source_queries,
+                  WANTED: lines(e.target.value),
+                },
+              })
+            }
+          />
+        </label>
+        <label>
+          관심 회사명·영문명·약칭 (한 줄에 하나)
+          <textarea
+            placeholder="예: 스트라드비젼\nStradVision\n포티투닷\n42dot"
+            value={(form.company_queries?.WANTED || []).join("\n")}
+            onChange={(e) =>
+              setForm({
+                ...form,
+                company_queries: {
+                  ...(form.company_queries || {}),
                   WANTED: lines(e.target.value),
                 },
               })

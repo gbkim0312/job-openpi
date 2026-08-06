@@ -14,6 +14,7 @@ class SearchProfile(BaseModel):
     include_keywords: list[str] = []
     exclude_keywords: list[str] = []
     source_queries: dict[str, list[str]] = {}
+    company_queries: dict[str, list[str]] = {}
 
 
 class ProfileStore:
