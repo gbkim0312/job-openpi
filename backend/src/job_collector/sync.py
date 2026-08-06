@@ -20,6 +20,16 @@ from .persistence import (
 logger = logging.getLogger(__name__)
 
 
+def _query_key(query: str) -> str:
+    """Return a stable key so equivalent profile queries are searched once.
+
+    Profiles often contain the same broad term (for example, ``C++ 개발자``).
+    Searching it once and attaching the result to every owning profile preserves
+    recall while avoiding duplicate upstream requests.
+    """
+    return " ".join(query.split()).casefold()
+
+
 class SyncService:
     def __init__(self, sessions, adapters, profiles, commit_batch_size: int = 10):
         self.sessions, self.adapters, self.profiles = sessions, adapters, profiles
@@ -57,21 +67,27 @@ class SyncService:
                             (profile.id, "") for profile in selected_profiles
                         }
                 else:
-                    query_plan = [
-                        (
-                            profile,
-                            query,
+                    # Group equivalent queries across profiles.  A query can be
+                    # shared safely because profile matching is recorded for all
+                    # profiles that requested it below.
+                    query_groups: dict[str, dict[str, object]] = {}
+                    for profile in selected_profiles:
+                        queries = (
+                            profile.source_queries.get(source, profile.queries)
+                            + profile.company_queries.get(source, [])
                         )
-                        for profile in selected_profiles
-                        for query in list(
-                            dict.fromkeys(
-                                profile.source_queries.get(source, profile.queries)
-                                + profile.company_queries.get(source, [])
+                        for query in queries:
+                            query = " ".join(str(query).split())
+                            key = _query_key(query)
+                            if not key:
+                                continue
+                            group = query_groups.setdefault(
+                                key, {"query": query, "profiles": []}
                             )
-                        )
-                    ]
+                            group["profiles"].append((profile.id, query))
+                    query_plan = list(query_groups.values())
                     total_queries = len(query_plan)
-                    for completed_queries, (profile, query) in enumerate(query_plan):
+                    for completed_queries, group in enumerate(query_plan):
                         if cancel_event and cancel_event.is_set():
                             run.status = "CANCELLED"
                             run.finished_at = now()
@@ -79,23 +95,26 @@ class SyncService:
                             return run
                         run.query_results = {
                             "phase": "search",
-                            "profile": profile.id,
-                            "query": query,
+                            "profile": ",".join(p[0] for p in group["profiles"]),
+                            "profiles": [p[0] for p in group["profiles"]],
+                            "query": group["query"],
                             "completed_queries": completed_queries,
                             "total_queries": total_queries,
                         }
                         await session.commit()
-                        for ref in await adapter.search(SourceSearchQuery(query=query)):
+                        for ref in await adapter.search(SourceSearchQuery(query=group["query"])):
                             refs.append(ref)
-                            profile_matches.setdefault(ref.source_job_id, set()).add(
-                                (profile.id, query)
-                            )
+                            for matched_profile, matched_query in group["profiles"]:
+                                profile_matches.setdefault(ref.source_job_id, set()).add(
+                                    (matched_profile, matched_query)
+                                )
                         completed_queries += 1
                         run.searched_count = len({ref.source_job_id for ref in refs})
                         run.query_results = {
                             "phase": "search",
-                            "profile": profile.id,
-                            "query": query,
+                            "profile": ",".join(p[0] for p in group["profiles"]),
+                            "profiles": [p[0] for p in group["profiles"]],
+                            "query": group["query"],
                             "completed_queries": completed_queries,
                             "total_queries": total_queries,
                         }

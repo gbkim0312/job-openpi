@@ -91,6 +91,8 @@ curl http://localhost:8000/ready
 
 사람인 인증키 없이 사용하려면 `SARAMIN_PUBLIC_ENABLED=true`를 설정합니다. 이 경우 사람인 공개 검색·상세 페이지를 직접 조회하며 `SARAMIN_PUBLIC_REQUEST_DELAY_SECONDS`로 요청 간격을 조절합니다. `SARAMIN_ENABLED=true`와 유효한 API 키가 함께 설정되면 공식 API 방식이 우선됩니다.
 
+여러 프로필에 같은 출처 검색어가 등록되어 있어도 동기화 시에는 공백·대소문자를 정규화한 뒤 한 번만 검색합니다. 검색 결과는 해당 검색어를 등록한 모든 프로필에 연결하므로 중복 요청을 줄이면서 프로필별 공고 매핑은 유지됩니다. 동기화 진행 상태의 `query_results.total_queries`는 중복 제거 후 실제 실행할 검색어 수입니다.
+
 모든 출처의 기본 요청 간격에 무작위 지연을 추가하려면 `REQUEST_RANDOM_DELAY_ENABLED=true`와 `REQUEST_RANDOM_DELAY_MAX_SECONDS`(기본 0.5초)를 설정합니다. 대시보드 설정에서도 변경할 수 있으며 저장 즉시 실행 중인 어댑터에 반영됩니다.
 
 외부에서 운영 중인 Tor를 선택적으로 사용하려면 `TOR_ENABLED=true`로 설정하고 `TOR_SOCKS_PROXY_URL=socks5://tor:9050`을 사용합니다. ControlPort 수동 회선 변경은 `TOR_CONTROL_ENABLED=true`, `TOR_CONTROL_HOST`, `TOR_CONTROL_PORT`, `TOR_CONTROL_PASSWORD`(해시가 아닌 원문 비밀번호)를 설정한 뒤 대시보드의 **새 Tor 회선 요청** 버튼 또는 `POST /api/v1/admin/tor/newnym`을 사용합니다. Tor의 `TOR_HASHED_CONTROL_PASSWORD`는 Tor 컨테이너에서만 관리하며 이 프로젝트에는 넣지 않습니다. 429/403 발생 시 자동 회선 변경·동일 요청 재전송은 하지 않고 실패 처리합니다.
