@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import hmac
 from contextlib import asynccontextmanager
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Literal
 from uuid import UUID
 
@@ -255,15 +255,18 @@ def create_app() -> FastAPI:
             if raw:
                 for item in raw.split(","):
                     clauses.append(field.contains([item]))
-        column = (
-            JobPostingRow.updated_at
-            if sort.startswith("updated_at")
-            else JobPostingRow.first_seen_at
-        )
-        direction = column.asc() if sort.endswith(":asc") else column.desc()
+        if sort.startswith("deadline_date"):
+            column = JobPostingRow.deadline_date
+        elif sort.startswith("updated_at"):
+            column = JobPostingRow.updated_at
+        else:
+            column = JobPostingRow.first_seen_at
+        ascending = sort.endswith(":asc")
+        direction = (column.asc() if ascending else column.desc()).nulls_last()
         if cursor:
             try:
-                clauses.append(column < datetime.fromisoformat(cursor))
+                cursor_value = date.fromisoformat(cursor) if sort.startswith("deadline_date") else datetime.fromisoformat(cursor)
+                clauses.append(column < cursor_value if ascending else column > cursor_value)
             except ValueError:
                 raise HTTPException(400, "invalid cursor")
         rows = (
@@ -279,7 +282,7 @@ def create_app() -> FastAPI:
             .all()
         )
         page = rows[:limit]
-        next_cursor = page[-1].first_seen_at.isoformat() if len(rows) > limit else None
+        next_cursor = getattr(page[-1], column.key).isoformat() if len(rows) > limit else None
         return {
             "items": [row_dict(x) for x in page],
             "page": {"limit": limit, "next_cursor": next_cursor},

@@ -36,6 +36,11 @@ function experienceLabel(experience: any) {
   if (experience.type === "EXPERIENCED") return "경력";
   return experience.raw || "-";
 }
+function deadlineLabel(deadline: any) {
+  if (!deadline?.date) return deadline?.always_open ? "상시채용" : "-";
+  const days = Math.ceil((new Date(`${deadline.date}T23:59:59`).getTime() - Date.now()) / 86400000);
+  return days < 0 ? "마감" : `D-${days} (${deadline.date})`;
+}
 function Header() {
   return (
     <header>
@@ -90,6 +95,7 @@ function Jobs() {
     statuses: "ACTIVE,CLOSED,UNKNOWN,DELETED",
     keyword: q,
     limit: "100",
+    sort: "deadline_date:asc",
   });
   if (source) params.set("sources", source);
   if (region) params.set("region", region);
@@ -191,6 +197,7 @@ function Jobs() {
                 <th>지역</th>
                 <th>경력</th>
                 <th>고용 형태</th>
+                <th>마감일</th>
               </tr>
             </thead>
             <tbody>
@@ -213,6 +220,7 @@ function Jobs() {
                     {experienceLabel(x.experience)}
                   </td>
                   <td>{x.employment_type || "-"}</td>
+                  <td>{deadlineLabel(x.deadline)}</td>
                 </tr>
               ))}
             </tbody>

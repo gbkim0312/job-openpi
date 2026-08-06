@@ -83,7 +83,7 @@ curl http://localhost:8000/ready
 | `GET` | `/api/v1/jobs/{job_id}/snapshots` | 저장된 스냅샷 |
 | `GET` | `/api/v1/jobs/{job_id}/changes` | 변경 이력 |
 
-목록 필터: `keyword`, `sources`, `statuses`, `categories`, `skills`, `region`, `employment_types`, `experience_types`, `min_experience`, `max_experience`, `limit`(1–100), `cursor`, `sort`(`first_seen_at:asc|desc`, `updated_at:asc|desc`)를 지원합니다. `experience_types`는 `NEWBIE`, `EXPERIENCED`, `ANY`, `UNKNOWN` 값을 사용합니다.
+목록 필터: `keyword`, `sources`, `statuses`, `categories`, `skills`, `region`, `employment_types`, `experience_types`, `min_experience`, `max_experience`, `limit`(1–100), `cursor`, `sort`(`first_seen_at:asc|desc`, `updated_at:asc|desc`, `deadline_date:asc|desc`)를 지원합니다. `experience_types`는 `NEWBIE`, `EXPERIENCED`, `ANY`, `UNKNOWN` 값을 사용합니다.
 
 ### 사람인 연동
 
