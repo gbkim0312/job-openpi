@@ -1,5 +1,6 @@
 import asyncio
 import sys
+from datetime import UTC, datetime
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -18,12 +19,14 @@ async def run_scheduler() -> None:
             profile_ids = list(app.state.profiles.items)
             if not profile_ids:
                 return
+            # Crawl one profile at a time.  Combining every profile into one
+            # source request creates large bursts and can trigger upstream
+            # throttling; sequential runs also make progress visible per profile.
             for source in app.state.sync.adapters:
-                await app.state.sync.sync(
-                    source,
-                    profile_ids[0],
-                    profile_ids=profile_ids,
-                )
+                started_at = datetime.now(UTC)
+                for profile_id in profile_ids:
+                    await app.state.sync.sync(source, profile_id, mark_missing=False)
+                await app.state.sync.reconcile_missing(source, started_at)
 
         async def recheck_all() -> None:
             # A source refresh confirms current records and turns postings absent

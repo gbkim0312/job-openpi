@@ -508,25 +508,28 @@ def create_app() -> FastAPI:
         missing_profiles = [item for item in profile_ids if item not in profiles.items]
         if missing_profiles:
             raise HTTPException(404, f"profile not found: {missing_profiles[0]}")
-        profile_id = profile_ids[0]
-
         async def execute() -> None:
             if sync_lock.locked():
                 return
-            sync_cancel_event.clear()
-            async with sync_lock:
-                try:
-                    for source in adapters:
-                        await sync_service.sync(
-                            source,
-                            profile_id,
-                            profile_ids=profile_ids,
-                            cancel_event=sync_cancel_event,
-                        )
-                        if sync_cancel_event.is_set():
-                            break
-                finally:
-                    sync_cancel_event.clear()
+                sync_cancel_event.clear()
+                async with sync_lock:
+                    try:
+                        for source in adapters:
+                            started_at = datetime.now(UTC)
+                            for selected_profile in profile_ids:
+                                await sync_service.sync(
+                                    source,
+                                    selected_profile,
+                                    cancel_event=sync_cancel_event,
+                                    mark_missing=False,
+                                )
+                                if sync_cancel_event.is_set():
+                                    break
+                            if sync_cancel_event.is_set():
+                                break
+                            await sync_service.reconcile_missing(source, started_at)
+                    finally:
+                        sync_cancel_event.clear()
 
         background_tasks.add_task(execute)
         return {
@@ -548,20 +551,24 @@ def create_app() -> FastAPI:
         missing_profiles = [item for item in profile_ids if item not in profiles.items]
         if missing_profiles:
             raise HTTPException(404, f"profile not found: {missing_profiles[0]}")
-        profile_id = profile_ids[0]
-
         async def execute() -> None:
             if sync_lock.locked():
                 return
             async with sync_lock:
                 sync_cancel_event.clear()
                 try:
-                    await sync_service.sync(
-                        source,
-                        profile_id,
-                        profile_ids=profile_ids,
-                        cancel_event=sync_cancel_event,
-                    )
+                    started_at = datetime.now(UTC)
+                    for selected_profile in profile_ids:
+                        await sync_service.sync(
+                            source,
+                            selected_profile,
+                            cancel_event=sync_cancel_event,
+                            mark_missing=False,
+                        )
+                        if sync_cancel_event.is_set():
+                            break
+                    if not sync_cancel_event.is_set():
+                        await sync_service.reconcile_missing(source, started_at)
                 finally:
                     sync_cancel_event.clear()
 

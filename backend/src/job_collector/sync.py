@@ -35,16 +35,65 @@ class SyncService:
         self.sessions, self.adapters, self.profiles = sessions, adapters, profiles
         self.commit_batch_size = max(1, commit_batch_size)
 
+    async def reconcile_missing(self, source: str, started_at: datetime) -> int:
+        """Mark active postings unseen during a complete multi-profile crawl.
+
+        Profile crawls deliberately do not do this themselves because each one
+        sees only a subset of a source.  The caller invokes this once after all
+        profiles for the source have completed.
+        """
+        changed = 0
+        async with self.sessions() as session:
+            rows = (
+                await session.execute(
+                    select(JobPostingRow).where(
+                        JobPostingRow.source == source,
+                        JobPostingRow.detected_status == JobStatus.ACTIVE.value,
+                        JobPostingRow.last_seen_at < started_at,
+                    )
+                )
+            ).scalars()
+            for posting in rows:
+                previous_hash = posting.content_hash
+                posting.detected_status = JobStatus.UNKNOWN.value
+                posting.status_reason = "not returned by completed source search"
+                posting.last_checked_at = now()
+                posting.content_hash = content_hash(
+                    {"previous_hash": previous_hash, "status": "UNKNOWN"}
+                )
+                session.add(
+                    JobSnapshotRow(
+                        job_posting_id=posting.id,
+                        change_type=JobChangeType.STATUS_CHANGED.value,
+                        previous_status=JobStatus.ACTIVE.value,
+                        current_status=JobStatus.UNKNOWN.value,
+                        changed_fields=["detected_status", "status_reason"],
+                        content_hash=posting.content_hash,
+                        snapshot={
+                            "detected_status": JobStatus.UNKNOWN.value,
+                            "status_reason": posting.status_reason,
+                        },
+                    )
+                )
+                changed += 1
+            await session.commit()
+        return changed
+
     async def sync(
         self,
         source: str,
         profile_id: str,
         profile_ids: list[str] | None = None,
         cancel_event: asyncio.Event | None = None,
+        mark_missing: bool | None = None,
     ) -> CrawlRunRow:
         adapter = self.adapters[source]
         selected_ids = profile_ids or [profile_id]
         selected_profiles = [self.profiles.get(item) for item in selected_ids]
+        # A single-profile crawl is only a partial view of a source.  It must
+        # not mark jobs belonging to other profiles as UNKNOWN.
+        if mark_missing is None:
+            mark_missing = len(selected_profiles) > 1
         run_profile_id = "ALL_PROFILES" if len(selected_profiles) > 1 else profile_id
         logger.info(
             "sync started source=%s profiles=%s",
@@ -224,15 +273,17 @@ class SyncService:
                         await session.commit()
                 # A completed source search no longer contains this previously active
                 # posting. It is not proof of closure, so preserve it as UNKNOWN.
-                missing = (
-                    await session.execute(
-                        select(JobPostingRow).where(
-                            JobPostingRow.source == source,
-                            JobPostingRow.detected_status == JobStatus.ACTIVE.value,
-                            JobPostingRow.source_job_id.not_in(unique),
+                missing = []
+                if mark_missing:
+                    missing = (
+                        await session.execute(
+                            select(JobPostingRow).where(
+                                JobPostingRow.source == source,
+                                JobPostingRow.detected_status == JobStatus.ACTIVE.value,
+                                JobPostingRow.source_job_id.not_in(unique),
+                            )
                         )
-                    )
-                ).scalars()
+                    ).scalars()
                 for posting in missing:
                     previous_hash = posting.content_hash
                     posting.detected_status = JobStatus.UNKNOWN.value
