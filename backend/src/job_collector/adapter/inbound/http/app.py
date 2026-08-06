@@ -15,6 +15,8 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ....bootstrap import Settings
+from ....domain.model import JobChangeType, SourceJobReference
+from ....domain.services import content_hash, normalize
 from ....persistence import (
     Base,
     CrawlRunRow,
@@ -351,17 +353,49 @@ def create_app() -> FastAPI:
         """Queue a source refresh; a source never changes status merely because search missed it."""
         return await sync_source(source, payload)
 
-    @app.post("/api/v1/admin/jobs/{job_id}/recheck", dependencies=[Depends(admin)], status_code=202)
+    @app.post("/api/v1/admin/jobs/{job_id}/recheck", dependencies=[Depends(admin)])
     async def recheck_job(job_id: UUID, session: AsyncSession = Depends(db)):
         row = await get_job(session, job_id)
         if not row:
             raise HTTPException(404, "job not found")
         if row.source not in adapters:
             raise HTTPException(400, "source unavailable")
-        # The next source run performs the conservative detail check.  Returning a run id
-        # keeps the request bounded instead of holding a dashboard connection open.
-        run = await sync_service.sync(row.source, settings.default_profile)
-        return {"run_ids": [str(run.id)], "status": run.status}
+        source_job = await adapters[row.source].fetch_detail(
+            SourceJobReference(
+                source=row.source, source_job_id=row.source_job_id, url=row.canonical_url
+            )
+        )
+        values = normalize(
+            source_job,
+            today=datetime.now(UTC).date(),
+            has_apply_action=bool(source_job.raw_payload.get("has_apply_action")),
+        )
+        digest = content_hash(values)
+        old_status, old_hash = row.detected_status, row.content_hash
+        changed_fields = [key for key, value in values.items() if getattr(row, key) != value]
+        for key, value in values.items():
+            setattr(row, key, value)
+        row.content_hash = digest
+        row.last_seen_at = row.last_checked_at = datetime.now(UTC)
+        if old_hash != digest:
+            change = (
+                JobChangeType.STATUS_CHANGED.value
+                if old_status != row.detected_status
+                else JobChangeType.CONTENT_UPDATED.value
+            )
+            session.add(
+                JobSnapshotRow(
+                    job_posting_id=row.id,
+                    change_type=change,
+                    previous_status=old_status,
+                    current_status=row.detected_status,
+                    changed_fields=changed_fields,
+                    content_hash=digest,
+                    snapshot=values,
+                )
+            )
+        await session.commit()
+        return row_dict(row, True)
 
     @app.post("/api/v1/admin/profiles", dependencies=[Depends(admin)], status_code=201)
     async def create_profile(payload: SearchProfile, session: AsyncSession = Depends(db)):

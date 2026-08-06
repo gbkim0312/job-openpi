@@ -106,6 +106,15 @@ def _text_list(soup: BeautifulSoup, label: str) -> tuple[str, ...]:
     return tuple(x.get_text(" ", strip=True) for x in parent.select("li") if x.get_text(strip=True))
 
 
+def _structured_lines(value: object) -> tuple[str, ...]:
+    """Convert the source's structured multi-line descriptions without inventing data."""
+    if not isinstance(value, str):
+        return ()
+    return tuple(
+        line.lstrip("-•· ").strip() for line in value.splitlines() if line.lstrip("-•· ").strip()
+    )
+
+
 def parse_wanted_detail(
     html: str, reference: SourceJobReference, fetched_at: datetime
 ) -> SourceJobPosting:
@@ -193,9 +202,12 @@ def parse_wanted_detail(
         raw_employment_type=employment,
         raw_deadline=raw_deadline,
         raw_status="채용 마감" if closed else source_status or None,
-        responsibilities=_text_list(soup, "주요업무"),
-        requirements=_text_list(soup, "자격요건"),
-        preferred_qualifications=_text_list(soup, "우대사항"),
+        responsibilities=_structured_lines(next_data.get("main_tasks"))
+        or _text_list(soup, "주요업무"),
+        requirements=_structured_lines(next_data.get("requirements"))
+        or _text_list(soup, "자격요건"),
+        preferred_qualifications=_structured_lines(next_data.get("preferred_points"))
+        or _text_list(soup, "우대사항"),
         fetched_at=fetched_at,
         raw_payload={
             "json_ld": json_ld,

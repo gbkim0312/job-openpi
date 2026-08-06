@@ -37,6 +37,7 @@ const endpoints: ApiEndpoint[] = [
   { name: '프로필 목록', method: 'GET', path: '/v1/profiles' }, { name: '프로필 상세', method: 'GET', path: '/v1/profiles/{profile_id}' },
   { name: '대시보드 요약', method: 'GET', path: '/v1/dashboard/summary' }, { name: '전체 동기화', method: 'POST', path: '/v1/admin/sync', body: '{\n  "profile": "mobility_sdv_security_cpp",\n  "mode": "incremental"\n}', admin: true },
   { name: '출처 동기화', method: 'POST', path: '/v1/admin/sources/WANTED/sync', body: '{\n  "profile": "mobility_sdv_security_cpp",\n  "mode": "incremental"\n}', admin: true },
+  { name: '특정 공고 재수집', method: 'POST', path: '/v1/admin/jobs/{job_id}/recheck', body: '{}', admin: true },
   { name: '프로필 다시 로드', method: 'POST', path: '/v1/admin/profiles/reload', body: '{}', admin: true },
   { name: '수집 일정 조회', method: 'GET', path: '/v1/admin/settings/schedule', admin: true },
   { name: '수집 일정 저장', method: 'PUT', path: '/v1/admin/settings/schedule', body: '{\n  "sync_cron": "0 2 * * *",\n  "recheck_cron": "0 3 * * *"\n}', admin: true },
