@@ -19,7 +19,7 @@ services:
   migrate:
     image: ${BACKEND_IMAGE:-job-collector-backend:local}
     command: ["migrate"]
-    env_file: ${ENV_FILE:-.env.images}
+    env_file: ${ENV_FILE:-.env}
     depends_on:
       postgres:
         condition: service_healthy
@@ -29,7 +29,7 @@ services:
     image: ${BACKEND_IMAGE:-job-collector-backend:local}
     container_name: job-collector-api
     command: ["api"]
-    env_file: ${ENV_FILE:-.env.images}
+    env_file: ${ENV_FILE:-.env}
     restart: unless-stopped
     expose: ["8000"]
     ports:
@@ -49,7 +49,7 @@ services:
     image: ${BACKEND_IMAGE:-job-collector-backend:local}
     container_name: job-collector-scheduler
     command: ["scheduler"]
-    env_file: ${ENV_FILE:-.env.images}
+    env_file: ${ENV_FILE:-.env}
     environment:
       SCHEDULER_ENABLED: "true"
     restart: unless-stopped

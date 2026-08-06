@@ -19,9 +19,9 @@ docker compose up --build
 ```sh
 docker build -t job-collector-backend:local ./backend
 docker build -t job-collector-dashboard:local ./dashboard
-cp .env.images.example .env.images
-# .env.images의 POSTGRES_PASSWORD와 ADMIN_API_KEY를 변경
-docker compose --env-file .env.images -f compose.images.yml up -d
+cp .env.example .env
+# .env의 POSTGRES_PASSWORD와 ADMIN_API_KEY를 변경
+docker compose --env-file .env -f compose.images.yml up -d
 ```
 
 `BACKEND_IMAGE`, `DASHBOARD_IMAGE`에 레지스트리 이미지 태그를 넣으면 같은 Compose 파일로 원격 이미지도 실행할 수 있습니다. 이 구성은 `build:`를 사용하지 않으며 API는 외부 포트를 열지 않고 대시보드만 `${DASHBOARD_PORT}`로 공개합니다.
