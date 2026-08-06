@@ -501,7 +501,7 @@ const endpoints: ApiEndpoint[] = [
     admin: true,
   },
   {
-    name: "출처 동기화",
+    name: "원티드 동기화",
     method: "POST",
     path: "/v1/admin/sources/WANTED/sync",
     body: '{\n  "profile": "mobility_sdv_security_cpp",\n  "mode": "incremental"\n}',
