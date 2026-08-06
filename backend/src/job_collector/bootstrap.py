@@ -39,6 +39,7 @@ class Settings(BaseSettings):
     hyundai_enabled: bool = Field(False, alias="HYUNDAI_ENABLED")
     http_timeout_seconds: float = Field(20, alias="HTTP_TIMEOUT_SECONDS")
     http_max_retries: int = Field(3, alias="HTTP_MAX_RETRIES")
+    sync_commit_batch_size: int = Field(10, ge=1, le=100, alias="SYNC_COMMIT_BATCH_SIZE")
     scheduler_enabled: bool = Field(False, alias="SCHEDULER_ENABLED")
     sync_cron: str = Field("0 2 * * *", alias="SYNC_CRON")
     recheck_cron: str = Field("0 3 * * *", alias="RECHECK_CRON")

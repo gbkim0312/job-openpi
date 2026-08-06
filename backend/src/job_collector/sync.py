@@ -10,8 +10,9 @@ from .persistence import CrawlRunRow, JobPostingRow, JobSnapshotRow, get_by_sour
 
 
 class SyncService:
-    def __init__(self, sessions, adapters, profiles):
+    def __init__(self, sessions, adapters, profiles, commit_batch_size: int = 10):
         self.sessions, self.adapters, self.profiles = sessions, adapters, profiles
+        self.commit_batch_size = max(1, commit_batch_size)
 
     async def sync(
         self, source: str, profile_id: str, profile_ids: list[str] | None = None
@@ -104,6 +105,9 @@ class SyncService:
                     except Exception as exc:  # noqa: BLE001 - source failures must be isolated
                         run.failed_count += 1
                         run.error_summary[ref.url] = type(exc).__name__
+                    if run.fetched_count and run.fetched_count % self.commit_batch_size == 0:
+                        # Persist progress while a large source crawl is still running.
+                        await session.commit()
                 # A completed source search no longer contains this previously active
                 # posting. It is not proof of closure, so preserve it as UNKNOWN.
                 missing = (

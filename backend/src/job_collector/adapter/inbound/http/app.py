@@ -178,7 +178,9 @@ def create_app() -> FastAPI:
                     proxy=settings.tor_socks_proxy_url if settings.tor_enabled else None,
                 )
             )
-    sync_service = SyncService(sessions, adapters, profiles)
+    sync_service = SyncService(
+        sessions, adapters, profiles, commit_batch_size=settings.sync_commit_batch_size
+    )
     sync_lock = asyncio.Lock()
 
     @asynccontextmanager
