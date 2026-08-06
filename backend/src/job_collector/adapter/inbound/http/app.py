@@ -22,6 +22,7 @@ from ....persistence import (
     Base,
     CrawlRunRow,
     JobPostingRow,
+    JobProfileMatchRow,
     JobSnapshotRow,
     SearchProfileRow,
     get_job,
@@ -249,6 +250,7 @@ def create_app() -> FastAPI:
         keyword: str | None = None,
         sources: str | None = None,
         statuses: str = "ACTIVE",
+        profile_id: str | None = None,
         categories: str | None = None,
         skills: str | None = None,
         region: str | None = None,
@@ -266,6 +268,16 @@ def create_app() -> FastAPI:
                 (
                     JobPostingRow.manual_status_override if False else JobPostingRow.detected_status
                 ).in_(statuses.split(","))
+            )
+        if profile_id:
+            if profile_id not in profiles.items:
+                raise HTTPException(404, "profile not found")
+            clauses.append(
+                JobPostingRow.id.in_(
+                    select(JobProfileMatchRow.job_id).where(
+                        JobProfileMatchRow.profile_id == profile_id
+                    )
+                )
             )
         if sources:
             clauses.append(JobPostingRow.source.in_(sources.split(",")))

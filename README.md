@@ -83,7 +83,7 @@ curl http://localhost:8000/ready
 | `GET` | `/api/v1/jobs/{job_id}/snapshots` | 저장된 스냅샷 |
 | `GET` | `/api/v1/jobs/{job_id}/changes` | 변경 이력 |
 
-목록 필터: `keyword`, `sources`, `statuses`, `categories`, `skills`, `region`, `employment_types`, `experience_types`, `min_experience`, `max_experience`, `limit`(1–100), `cursor`, `sort`를 지원합니다. 정렬 기준은 `deadline_date`, `company_name`, `title`, `source`, `region`, `experience`, `employment_type`, `updated_at`, `first_seen_at`이며 각각 `:asc` 또는 `:desc`를 붙입니다. `experience_types`는 `NEWBIE`, `EXPERIENCED`, `ANY`, `UNKNOWN` 값을 사용합니다. 프로필의 `company_queries`는 출처별 회사명·영문명·약칭 검색어이며 WANTED·사람인·잡코리아 등 해당 출처 동기화에 함께 사용됩니다.
+목록 필터: `keyword`, `profile_id`, `sources`, `statuses`, `categories`, `skills`, `region`, `employment_types`, `experience_types`, `min_experience`, `max_experience`, `limit`(1–100), `cursor`, `sort`를 지원합니다. 정렬 기준은 `deadline_date`, `company_name`, `title`, `source`, `region`, `experience`, `employment_type`, `updated_at`, `first_seen_at`이며 각각 `:asc` 또는 `:desc`를 붙입니다. `profile_id`를 지정하면 해당 프로필로 새로 매핑된 공고만 반환합니다. 기존 공고는 소급 매핑하지 않습니다. `experience_types`는 `NEWBIE`, `EXPERIENCED`, `ANY`, `UNKNOWN` 값을 사용합니다. 프로필의 `company_queries`는 출처별 회사명·영문명·약칭 검색어이며 WANTED·사람인·잡코리아 등 해당 출처 동기화에 함께 사용됩니다.
 
 ### 사람인 연동
 

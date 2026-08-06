@@ -6,7 +6,14 @@ from sqlalchemy import select
 
 from .domain.model import JobChangeType, JobStatus, SourceSearchQuery
 from .domain.services import content_hash, json_safe, normalize
-from .persistence import CrawlRunRow, JobPostingRow, JobSnapshotRow, get_by_source, now
+from .persistence import (
+    CrawlRunRow,
+    JobPostingRow,
+    JobProfileMatchRow,
+    JobSnapshotRow,
+    get_by_source,
+    now,
+)
 
 
 class SyncService:
@@ -27,17 +34,27 @@ class SyncService:
             await session.commit()
             try:
                 refs = []
+                profile_matches: dict[str, set[tuple[str, str]]] = {}
                 if getattr(adapter, "profile_independent", False):
-                    queries = [""]
+                    refs = list(await adapter.search(SourceSearchQuery(query="")))
+                    for ref in refs:
+                        profile_matches[ref.source_job_id] = {
+                            (profile.id, "") for profile in selected_profiles
+                        }
                 else:
-                    queries = []
                     for profile in selected_profiles:
-                        queries.extend(profile.source_queries.get(source, profile.queries))
-                        queries.extend(profile.company_queries.get(source, []))
-                    # Preserve profile order while avoiding duplicate requests.
-                    queries = list(dict.fromkeys(queries))
-                for query in queries:
-                    refs.extend(await adapter.search(SourceSearchQuery(query=query)))
+                        queries = list(
+                            dict.fromkeys(
+                                profile.source_queries.get(source, profile.queries)
+                                + profile.company_queries.get(source, [])
+                            )
+                        )
+                        for query in queries:
+                            for ref in await adapter.search(SourceSearchQuery(query=query)):
+                                refs.append(ref)
+                                profile_matches.setdefault(ref.source_job_id, set()).add(
+                                    (profile.id, query)
+                                )
                 unique = {r.source_job_id: r for r in refs}
                 run.searched_count = len(unique)
                 for ref in unique.values():
@@ -60,6 +77,7 @@ class SyncService:
                             )
                             session.add(row)
                             await session.flush()
+                            posting = row
                             session.add(
                                 JobSnapshotRow(
                                     job_posting_id=row.id,
@@ -71,6 +89,7 @@ class SyncService:
                             )
                             run.created_count += 1
                         else:
+                            posting = existing
                             old_status = existing.detected_status
                             if existing.content_hash != digest:
                                 changed = [
@@ -101,6 +120,24 @@ class SyncService:
                                 )
                                 run.updated_count += 1
                             existing.last_seen_at = existing.last_checked_at = timestamp
+                        for matched_profile, matched_query in profile_matches.get(
+                            ref.source_job_id, set()
+                        ):
+                            match = await session.get(
+                                JobProfileMatchRow, (posting.id, matched_profile)
+                            )
+                            if match is None:
+                                session.add(
+                                    JobProfileMatchRow(
+                                        job_id=posting.id,
+                                        profile_id=matched_profile,
+                                        matched_query=matched_query,
+                                    )
+                                )
+                            else:
+                                match.last_matched_at = timestamp
+                                if matched_query:
+                                    match.matched_query = matched_query
                         run.fetched_count += 1
                     except Exception as exc:  # noqa: BLE001 - source failures must be isolated
                         run.failed_count += 1

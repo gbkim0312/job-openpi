@@ -73,6 +73,15 @@ class JobPostingRow(Base):
     )
 
 
+class JobProfileMatchRow(Base):
+    __tablename__ = "job_profile_matches"
+    job_id: Mapped[UUID] = mapped_column(ForeignKey("job_postings.id"), primary_key=True)
+    profile_id: Mapped[str] = mapped_column(String(100), primary_key=True, index=True)
+    matched_query: Mapped[str] = mapped_column(Text, default="")
+    first_matched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    last_matched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
 class JobSnapshotRow(Base):
     __tablename__ = "job_snapshots"
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
