@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from datetime import UTC, datetime
 
 from sqlalchemy import select
@@ -15,6 +16,8 @@ from .persistence import (
     get_by_source,
     now,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class SyncService:
@@ -33,6 +36,11 @@ class SyncService:
         selected_ids = profile_ids or [profile_id]
         selected_profiles = [self.profiles.get(item) for item in selected_ids]
         run_profile_id = "ALL_PROFILES" if len(selected_profiles) > 1 else profile_id
+        logger.info(
+            "sync started source=%s profiles=%s",
+            source,
+            ",".join(selected_ids),
+        )
         async with self.sessions() as session:
             run = CrawlRunRow(source=source, profile_id=run_profile_id, status="RUNNING")
             session.add(run)
@@ -67,6 +75,12 @@ class SyncService:
                         run.status = "CANCELLED"
                         run.finished_at = now()
                         await session.commit()
+                        logger.info(
+                            "sync cancelled source=%s fetched=%s failed=%s",
+                            source,
+                            run.fetched_count,
+                            run.failed_count,
+                        )
                         return run
                     try:
                         raw = await adapter.fetch_detail(ref)
@@ -194,10 +208,21 @@ class SyncService:
                     run.status = "CANCELLED"
                 run.finished_at = now()
                 await session.commit()
+                logger.info(
+                    "sync finished source=%s status=%s searched=%s fetched=%s created=%s updated=%s failed=%s",
+                    source,
+                    run.status,
+                    run.searched_count,
+                    run.fetched_count,
+                    run.created_count,
+                    run.updated_count,
+                    run.failed_count,
+                )
                 return run
-            except Exception as exc:  # noqa: BLE001 - persist failed run diagnostics
+            except Exception as exc:
                 run.status = "FAILED"
                 run.finished_at = now()
                 run.error_summary = {"error": type(exc).__name__}
                 await session.commit()
+                logger.exception("sync failed source=%s", source)
                 return run

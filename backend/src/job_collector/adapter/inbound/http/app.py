@@ -379,7 +379,13 @@ def create_app() -> FastAPI:
             .all()
         )
         page = rows[:limit]
-        next_cursor = getattr(page[-1], column.key).isoformat() if len(rows) > limit else None
+        last_value = getattr(page[-1], column.key) if page else None
+        if len(rows) > limit and last_value is not None:
+            next_cursor = (
+                last_value.isoformat() if hasattr(last_value, "isoformat") else str(last_value)
+            )
+        else:
+            next_cursor = None
         return {
             "items": [row_dict(x) for x in page],
             "page": {"limit": limit, "next_cursor": next_cursor},
