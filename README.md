@@ -83,7 +83,7 @@ curl http://localhost:8000/ready
 | `GET` | `/api/v1/jobs/{job_id}/snapshots` | 저장된 스냅샷 |
 | `GET` | `/api/v1/jobs/{job_id}/changes` | 변경 이력 |
 
-목록 필터: `keyword`, `sources`, `statuses`, `categories`, `skills`, `region`, `employment_types`, `experience_types`, `min_experience`, `max_experience`, `limit`(1–100), `cursor`, `sort`(`first_seen_at:asc|desc`, `updated_at:asc|desc`, `deadline_date:asc|desc`)를 지원합니다. `experience_types`는 `NEWBIE`, `EXPERIENCED`, `ANY`, `UNKNOWN` 값을 사용합니다. 프로필의 `company_queries`는 출처별 회사명·영문명·약칭 검색어이며 WANTED·사람인·잡코리아 등 해당 출처 동기화에 함께 사용됩니다.
+목록 필터: `keyword`, `sources`, `statuses`, `categories`, `skills`, `region`, `employment_types`, `experience_types`, `min_experience`, `max_experience`, `limit`(1–100), `cursor`, `sort`를 지원합니다. 정렬 기준은 `deadline_date`, `company_name`, `title`, `source`, `region`, `experience`, `employment_type`, `updated_at`, `first_seen_at`이며 각각 `:asc` 또는 `:desc`를 붙입니다. `experience_types`는 `NEWBIE`, `EXPERIENCED`, `ANY`, `UNKNOWN` 값을 사용합니다. 프로필의 `company_queries`는 출처별 회사명·영문명·약칭 검색어이며 WANTED·사람인·잡코리아 등 해당 출처 동기화에 함께 사용됩니다.
 
 ### 사람인 연동
 
@@ -151,7 +151,7 @@ curl -G http://localhost:8000/api/v1/jobs \
 | `GET` | `/api/v1/admin/crawl-runs/{run_id}` | 수집 실행 상세 |
 | `DELETE` | `/api/v1/admin/jobs` | 공고·변경 이력 전체 삭제 (확인 문자열 필요) |
 
-동기화 본문은 선택적 프로필과 모드를 받습니다. 현재 지원 모드는 `incremental`입니다.
+동기화 본문은 선택적 프로필과 모드를 받습니다. 현재 지원 모드는 `incremental`입니다. `profile`을 생략하면 등록된 모든 프로필의 검색어를 출처별로 합쳐 순차 실행합니다.
 
 ```sh
 curl -X POST http://localhost:8000/api/v1/admin/sync \
@@ -160,10 +160,10 @@ curl -X POST http://localhost:8000/api/v1/admin/sync \
   -d '{"profile":"mobility_sdv_security_cpp","mode":"incremental"}'
 ```
 
-성공 응답은 실행 ID를 반환합니다.
+요청이 등록되면 백그라운드 실행 상태를 반환합니다.
 
 ```json
-{"run_ids":["uuid"],"status":"COMPLETED"}
+{"status":"QUEUED","message":"동기화가 백그라운드에서 시작됩니다.","profiles":["mobility_sdv_security_cpp"]}
 ```
 
 전체 삭제는 다음 본문이 정확히 일치할 때만 실행됩니다. 수집 실행 이력과 프로필은 삭제하지 않습니다.
@@ -184,10 +184,22 @@ curl -X POST http://localhost:8000/api/v1/admin/sync \
 | `PUT` | `/api/v1/admin/settings/schedule` | 수집 일정 변경 |
 | `GET` | `/api/v1/admin/settings/request-pacing` | 요청 랜덤 지연 설정 조회 |
 | `PUT` | `/api/v1/admin/settings/request-pacing` | 요청 랜덤 지연 설정 변경(즉시 적용) |
+| `POST` | `/api/v1/admin/tor/newnym` | 외부 Tor ControlPort에 수동 새 회선 요청 |
 
 ```json
 {"sync_cron":"0 2 * * *","recheck_cron":"0 3 * * *"}
 ```
+
+요청 지연 설정 예시:
+
+```json
+{
+  "random_delay_enabled": true,
+  "random_delay_max_seconds": 0.5
+}
+```
+
+Tor 회선 변경은 `TOR_CONTROL_ENABLED=true`인 경우에만 동작하며, `TOR_CONTROL_PASSWORD`는 Tor의 해시가 아닌 원문 비밀번호입니다. 429/403 발생 시 자동 회선 변경이나 동일 요청 재전송은 수행하지 않습니다.
 
 완료된 출처 검색에서 기존 `ACTIVE` 공고가 보이지 않으면 마감으로 단정하지 않고 `UNKNOWN`으로 전환하며 변경 이력을 남깁니다. 이후 출처가 명시적 마감·삭제·활성 상태를 제공할 때 각각 `CLOSED`·`DELETED`·`ACTIVE`로 갱신됩니다.
 
