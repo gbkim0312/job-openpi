@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter, Link, Route, Routes } from "react-router-dom";
 import {
@@ -813,6 +813,8 @@ function Settings() {
   const [confirmText, setConfirmText] = useState("");
   const [message, setMessage] = useState("");
   const [syncingNow, setSyncingNow] = useState(false);
+  const [syncStartedAt, setSyncStartedAt] = useState<string | null>(null);
+  const [syncLogs, setSyncLogs] = useState<any[]>([]);
   const saveKey = () => {
     sessionStorage.setItem("adminApiKey", key);
     setMessage("관리자 API 키를 저장했습니다.");
@@ -855,6 +857,8 @@ function Settings() {
   };
   const syncNow = async () => {
     setSyncingNow(true);
+    setSyncStartedAt(new Date().toISOString());
+    setSyncLogs([]);
     try {
       const data = await request("/v1/admin/sync", {
         method: "POST",
@@ -867,6 +871,29 @@ function Settings() {
       setSyncingNow(false);
     }
   };
+  useEffect(() => {
+    if (!syncingNow) return;
+    let polls = 0;
+    const poll = async () => {
+      try {
+        const data = await request("/v1/admin/crawl-runs");
+        const startedAt = syncStartedAt ? Date.parse(syncStartedAt) : 0;
+        const recent = (data.items || []).filter(
+          (run: any) => !startedAt || Date.parse(run.started_at) >= startedAt - 1000,
+        );
+        setSyncLogs(recent.slice(0, 30));
+        polls += 1;
+        if (polls > 1 && recent.length > 0 && !recent.some((run: any) => run.status === "RUNNING")) {
+          setSyncingNow(false);
+        }
+      } catch (error) {
+        setMessage(`동기화 로그 조회 실패: ${String(error)}`);
+      }
+    };
+    poll();
+    const timer = window.setInterval(poll, 2000);
+    return () => window.clearInterval(timer);
+  }, [syncingNow, syncStartedAt]);
   const saveRequestPacing = async () => {
     try {
       await request("/v1/admin/settings/request-pacing", {
@@ -943,6 +970,23 @@ function Settings() {
         <button onClick={syncNow} disabled={syncingNow}>
           {syncingNow ? "동기화 요청 중…" : "지금 전체 동기화"}
         </button>
+        {(syncingNow || syncLogs.length > 0) && (
+          <div className="sync-log" aria-live="polite">
+            <strong>{syncingNow ? "동기화 진행 중" : "동기화 완료"}</strong>
+            {syncLogs.length === 0 ? (
+              <p>실행 로그를 기다리는 중…</p>
+            ) : (
+              <ul>
+                {syncLogs.map((run: any) => (
+                  <li key={run.id}>
+                    <span className={`run-status ${run.status}`}>{run.status}</span>{" "}
+                    {run.source} · {run.profile_id} · 생성 {run.created_count ?? 0} · 갱신 {run.updated_count ?? 0} · 실패 {run.failed_count ?? 0}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
       </section>
       <section className="settings-card">
         <h2>요청 속도 제한</h2>
