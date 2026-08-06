@@ -391,6 +391,7 @@ function Profiles() {
   });
   const [form, setForm] = useState<Profile>(blank);
   const [editing, setEditing] = useState(false);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   const [message, setMessage] = useState("");
   const field = (name: keyof Profile) =>
     Array.isArray(form[name]) ? (form[name] as string[]).join("\n") : "";
@@ -447,24 +448,38 @@ function Profiles() {
       <p>관리자 API 키를 설정한 뒤 프로필을 추가·수정·삭제할 수 있습니다.</p>
       {error && <p>프로필을 불러올 수 없습니다.</p>}
       <section className="profile-grid">
-        {data?.items.map((p) => (
-          <article key={p.id}>
-            <strong>{p.display_name}</strong>
-            <small>{p.id}</small>
-            <p>{p.queries.join(", ")}</p>
-            <button
-              onClick={() => {
-                setForm(normalizeProfile(p));
-                setEditing(true);
-              }}
-            >
-              수정
-            </button>
-            <button className="danger" onClick={() => remove(p)}>
-              삭제
-            </button>
-          </article>
-        ))}
+        {data?.items.map((p) => {
+          const expanded = expandedId === p.id;
+          return (
+            <article key={p.id} className={expanded ? "expanded" : ""}>
+              <button
+                className="profile-toggle"
+                onClick={() => setExpandedId(expanded ? null : p.id)}
+                aria-expanded={expanded}
+              >
+                <strong>{p.display_name}</strong>
+                <span>{expanded ? "▴" : "▾"}</span>
+              </button>
+              {expanded && (
+                <div className="profile-details">
+                  <small>{p.id}</small>
+                  <p>{p.queries.join(", ")}</p>
+                  <button
+                    onClick={() => {
+                      setForm(normalizeProfile(p));
+                      setEditing(true);
+                    }}
+                  >
+                    수정
+                  </button>
+                  <button className="danger" onClick={() => remove(p)}>
+                    삭제
+                  </button>
+                </div>
+              )}
+            </article>
+          );
+        })}
       </section>
       <h2>{editing ? "프로필 수정" : "프로필 추가"}</h2>
       <section className="profile-form">

@@ -133,6 +133,30 @@ pre {
   color: #64748b;
   margin-top: 4px;
 }
+.profile-grid article {
+  min-height: 58px;
+}
+.profile-grid article.expanded {
+  min-height: 0;
+}
+.profile-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: transparent;
+  color: #172033;
+  padding: 8px 0;
+  margin: 0;
+  text-align: left;
+}
+.profile-toggle span {
+  color: #64748b;
+}
+.profile-details p {
+  margin: 12px 0;
+  color: #475569;
+}
 .profile-form,
 .api-tester,
 .settings-card {
