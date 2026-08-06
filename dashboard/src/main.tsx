@@ -279,6 +279,24 @@ function Profiles() {
     Array.isArray(form[name]) ? (form[name] as string[]).join("\n") : "";
   const setLines = (name: keyof Profile, value: string) =>
     setForm({ ...form, [name]: lines(value) });
+  const companyField = (source: string, label: string) => (
+    <label>
+      {label} 회사명·영문명·약칭 (한 줄에 하나)
+      <textarea
+        placeholder="예: 현대모비스\nHyundai Mobis"
+        value={(form.company_queries?.[source] || []).join("\n")}
+        onChange={(e) =>
+          setForm({
+            ...form,
+            company_queries: {
+              ...(form.company_queries || {}),
+              [source]: lines(e.target.value),
+            },
+          })
+        }
+      />
+    </label>
+  );
   const save = async () => {
     try {
       await request(
@@ -392,6 +410,11 @@ function Profiles() {
             }
           />
         </label>
+        {companyField("SARAMIN", "사람인")}
+        {companyField("JOBKOREA", "잡코리아")}
+        {companyField("SAMSUNG", "삼성 Careers")}
+        {companyField("LG", "LG Careers")}
+        {companyField("HYUNDAI", "현대 Careers")}
         <button
           onClick={save}
           disabled={!form.id || !form.display_name || !form.queries.length}

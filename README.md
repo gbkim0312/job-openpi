@@ -83,7 +83,7 @@ curl http://localhost:8000/ready
 | `GET` | `/api/v1/jobs/{job_id}/snapshots` | 저장된 스냅샷 |
 | `GET` | `/api/v1/jobs/{job_id}/changes` | 변경 이력 |
 
-목록 필터: `keyword`, `sources`, `statuses`, `categories`, `skills`, `region`, `employment_types`, `experience_types`, `min_experience`, `max_experience`, `limit`(1–100), `cursor`, `sort`(`first_seen_at:asc|desc`, `updated_at:asc|desc`, `deadline_date:asc|desc`)를 지원합니다. `experience_types`는 `NEWBIE`, `EXPERIENCED`, `ANY`, `UNKNOWN` 값을 사용합니다. 프로필의 `company_queries`에는 회사명·영문명·약칭을 입력할 수 있으며, WANTED 동기화 시 직무 검색어와 함께 조회됩니다.
+목록 필터: `keyword`, `sources`, `statuses`, `categories`, `skills`, `region`, `employment_types`, `experience_types`, `min_experience`, `max_experience`, `limit`(1–100), `cursor`, `sort`(`first_seen_at:asc|desc`, `updated_at:asc|desc`, `deadline_date:asc|desc`)를 지원합니다. `experience_types`는 `NEWBIE`, `EXPERIENCED`, `ANY`, `UNKNOWN` 값을 사용합니다. 프로필의 `company_queries`는 출처별 회사명·영문명·약칭 검색어이며 WANTED·사람인·잡코리아 등 해당 출처 동기화에 함께 사용됩니다.
 
 ### 사람인 연동
 
