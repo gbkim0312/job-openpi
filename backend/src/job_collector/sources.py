@@ -153,6 +153,7 @@ class SaraminPublicJobSourceAdapter(JobSourcePort):
     def __init__(self, base_url: str, timeout: float = 20, delay: float = 1.5):
         self.base_url, self.timeout, self.delay = base_url.rstrip("/"), timeout, delay
         self._last_request = 0.0
+        self._search_metadata: dict[str, str] = {}
 
     @property
     def source(self):
@@ -190,6 +191,9 @@ class SaraminPublicJobSourceAdapter(JobSourcePort):
             match = pattern.search(href)
             if match:
                 job_id = match.group(1)
+                card = anchor.find_parent(class_="item_recruit")
+                if card:
+                    self._search_metadata[job_id] = card.get_text(" ", strip=True)
                 refs[job_id] = SourceJobReference(
                     self.source,
                     job_id,
@@ -200,11 +204,13 @@ class SaraminPublicJobSourceAdapter(JobSourcePort):
 
     async def fetch_detail(self, reference: SourceJobReference) -> SourceJobPosting:
         html = await self._get(reference.url)
-        return parse_saramin_public_detail(html, reference, datetime.now(UTC))
+        return parse_saramin_public_detail(
+            html, reference, datetime.now(UTC), self._search_metadata.get(reference.source_job_id)
+        )
 
 
 def parse_saramin_public_detail(
-    html: str, reference: SourceJobReference, fetched_at: datetime
+    html: str, reference: SourceJobReference, fetched_at: datetime, search_metadata: str | None = None
 ) -> SourceJobPosting:
     soup = BeautifulSoup(html, "lxml")
     og_title = soup.select_one('meta[property="og:title"]')
@@ -222,6 +228,19 @@ def parse_saramin_public_detail(
         r"(?:^|,\s*)마감일\s*:\s*(\d{4}[-.]\d{1,2}[-.]\d{1,2})", summary
     )
     experience_match = re.search(r"(?:^|,\s*)경력\s*:\s*([^,]+)", summary)
+    location = employment = None
+    if search_metadata:
+        location_match = re.search(
+            r"((?:서울|부산|대구|인천|광주|대전|울산|세종|경기|강원|충북|충남|전북|전남|경북|경남|제주)(?:\s+\S+){0,2}?)"
+            r"\s+(?=신입|경력|초대졸|대졸|고졸|학력|무관)",
+            search_metadata,
+        )
+        employment_match = re.search(
+            r"((?:정규직|계약직|인턴|파견직|프리랜서)(?:·(?:정규직|계약직|인턴|파견직|프리랜서))*)",
+            search_metadata,
+        )
+        location = location_match.group(1).strip() if location_match else None
+        employment = employment_match.group(1) if employment_match else None
     raw_text = soup.get_text(" ", strip=True)
     closed = any(marker in raw_text for marker in ("채용 마감", "접수 마감", "모집 마감"))
     return SourceJobPosting(
@@ -230,7 +249,9 @@ def parse_saramin_public_detail(
         reference.url,
         title,
         company,
+        raw_location=location,
         raw_experience=experience_match.group(1).strip() if experience_match else None,
+        raw_employment_type=employment,
         raw_deadline=deadline_match.group(1) if deadline_match else None,
         raw_status="closed" if closed else "active",
         fetched_at=fetched_at,
