@@ -467,19 +467,31 @@ def create_app() -> FastAPI:
 
     @app.post("/api/v1/admin/sync", dependencies=[Depends(admin)], status_code=202)
     async def sync_all(payload: SyncRequest, background_tasks: BackgroundTasks):
-        profile_id = payload.profile or settings.default_profile
-        if profile_id not in profiles.items:
-            raise HTTPException(404, "profile not found")
+        profile_ids = [payload.profile] if payload.profile else list(profiles.items)
+        if not profile_ids:
+            raise HTTPException(404, "no profiles configured")
+        missing_profiles = [item for item in profile_ids if item not in profiles.items]
+        if missing_profiles:
+            raise HTTPException(404, f"profile not found: {missing_profiles[0]}")
+        profile_id = profile_ids[0]
 
         async def execute() -> None:
             if sync_lock.locked():
                 return
             async with sync_lock:
                 for source in adapters:
-                    await sync_service.sync(source, profile_id)
+                    await sync_service.sync(
+                        source,
+                        profile_id,
+                        profile_ids=profile_ids,
+                    )
 
         background_tasks.add_task(execute)
-        return {"status": "QUEUED", "message": "동기화가 백그라운드에서 시작됩니다."}
+        return {
+            "status": "QUEUED",
+            "message": "동기화가 백그라운드에서 시작됩니다.",
+            "profiles": profile_ids,
+        }
 
     @app.post("/api/v1/admin/sources/{source}/sync", dependencies=[Depends(admin)], status_code=202)
     async def sync_source(

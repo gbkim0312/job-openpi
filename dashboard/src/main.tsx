@@ -812,6 +812,7 @@ function Settings() {
   const [randomDelayMax, setRandomDelayMax] = useState("0.5");
   const [confirmText, setConfirmText] = useState("");
   const [message, setMessage] = useState("");
+  const [syncingNow, setSyncingNow] = useState(false);
   const saveKey = () => {
     sessionStorage.setItem("adminApiKey", key);
     setMessage("관리자 API 키를 저장했습니다.");
@@ -850,6 +851,20 @@ function Settings() {
       );
     } catch (error) {
       setMessage(`일정 저장 실패: ${String(error)}`);
+    }
+  };
+  const syncNow = async () => {
+    setSyncingNow(true);
+    try {
+      const data = await request("/v1/admin/sync", {
+        method: "POST",
+        body: JSON.stringify({ mode: "incremental" }),
+      });
+      setMessage(`즉시 동기화를 시작했습니다. ${data.profiles?.length || 0}개 프로필을 사용합니다.`);
+    } catch (error) {
+      setMessage(`즉시 동기화 실패: ${String(error)}`);
+    } finally {
+      setSyncingNow(false);
     }
   };
   const saveRequestPacing = async () => {
@@ -925,6 +940,9 @@ function Settings() {
         </label>
         <button onClick={loadSchedule}>현재 일정 불러오기</button>
         <button onClick={saveSchedule}>일정 저장</button>
+        <button onClick={syncNow} disabled={syncingNow}>
+          {syncingNow ? "동기화 요청 중…" : "지금 전체 동기화"}
+        </button>
       </section>
       <section className="settings-card">
         <h2>요청 속도 제한</h2>
