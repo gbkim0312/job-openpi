@@ -1,3 +1,5 @@
+import os
+
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
@@ -5,6 +7,11 @@ from job_collector.persistence import Base
 
 config = context.config
 target_metadata = Base.metadata
+
+# Compose injects DATABASE_URL through env_file.  Alembic must use the same
+# connection string as the API instead of the placeholder in alembic.ini.
+if database_url := os.getenv("DATABASE_URL"):
+    config.set_main_option("sqlalchemy.url", database_url)
 
 
 def run_migrations_offline():

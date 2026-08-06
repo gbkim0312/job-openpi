@@ -32,6 +32,8 @@ services:
     env_file: ${ENV_FILE:-.env.images}
     restart: unless-stopped
     expose: ["8000"]
+    ports:
+      - "${API_EXTERNAL_PORT:-18000}:8000"
     depends_on:
       postgres:
         condition: service_healthy
