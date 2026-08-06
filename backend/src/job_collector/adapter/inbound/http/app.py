@@ -542,9 +542,13 @@ def create_app() -> FastAPI:
         source = source.upper()
         if source not in adapters:
             raise HTTPException(400, "source unavailable")
-        profile_id = payload.profile or settings.default_profile
-        if profile_id not in profiles.items:
-            raise HTTPException(404, "profile not found")
+        profile_ids = [payload.profile] if payload.profile else list(profiles.items)
+        if not profile_ids:
+            raise HTTPException(404, "no profiles configured")
+        missing_profiles = [item for item in profile_ids if item not in profiles.items]
+        if missing_profiles:
+            raise HTTPException(404, f"profile not found: {missing_profiles[0]}")
+        profile_id = profile_ids[0]
 
         async def execute() -> None:
             if sync_lock.locked():
@@ -552,12 +556,21 @@ def create_app() -> FastAPI:
             async with sync_lock:
                 sync_cancel_event.clear()
                 try:
-                    await sync_service.sync(source, profile_id, cancel_event=sync_cancel_event)
+                    await sync_service.sync(
+                        source,
+                        profile_id,
+                        profile_ids=profile_ids,
+                        cancel_event=sync_cancel_event,
+                    )
                 finally:
                     sync_cancel_event.clear()
 
         background_tasks.add_task(execute)
-        return {"status": "QUEUED", "message": f"{source} 동기화가 백그라운드에서 시작됩니다."}
+        return {
+            "status": "QUEUED",
+            "message": f"{source} 동기화가 백그라운드에서 시작됩니다.",
+            "profiles": profile_ids,
+        }
 
     @app.post("/api/v1/admin/sync/cancel", dependencies=[Depends(admin)])
     async def cancel_sync():

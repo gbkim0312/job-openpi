@@ -144,7 +144,7 @@ curl -G http://localhost:8000/api/v1/jobs \
 | --- | --- | --- |
 | `POST` | `/api/v1/admin/sync` | 활성화된 모든 출처 동기화 |
 | `POST` | `/api/v1/admin/sync/cancel` | 실행 중인 동기화 중지 요청 |
-| `POST` | `/api/v1/admin/sources/{source}/sync` | 특정 출처 동기화 |
+| `POST` | `/api/v1/admin/sources/{source}/sync` | 특정 출처 동기화 (`profile` 생략 시 전체 프로필) |
 | `POST` | `/api/v1/admin/sources/{source}/recheck` | 출처 공고 재확인 실행 |
 | `POST` | `/api/v1/admin/jobs/{job_id}/recheck` | 특정 공고 재확인 실행 |
 | `POST` | `/api/v1/admin/profiles/reload` | YAML 프로필 다시 로드 |
