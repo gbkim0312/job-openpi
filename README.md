@@ -95,6 +95,8 @@ curl http://localhost:8000/ready
 
 삼성·LG·현대 공식 채용 사이트도 공개 페이지 어댑터로 지원합니다. 각각 `SAMSUNG_ENABLED`, `LG_ENABLED`, `HYUNDAI_ENABLED`를 `true`로 설정하면 활성화됩니다. 상세 페이지 구조 변경이나 접근 제한은 개별 실패로 기록하며, 로그인·캡차·비공개 API 우회는 수행하지 않습니다.
 
+검색 동기화는 각 출처의 페이지네이션을 따라가며 빈 페이지 또는 마지막 페이지까지 수집합니다. 페이지 수를 제공하지 않는 공개 페이지는 중복·빈 결과로 종료하고, 오작동하는 페이지 링크로 인한 무한 요청을 막기 위해 검색어당 최대 100페이지를 안전 상한으로 둡니다.
+
 ```sh
 curl -G http://localhost:8000/api/v1/jobs \
   --data-urlencode 'statuses=ACTIVE' \

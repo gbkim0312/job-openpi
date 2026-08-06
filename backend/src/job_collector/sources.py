@@ -19,6 +19,11 @@ from .domain.model import (
     SourceSearchQuery,
 )
 
+# Public search pages do not expose a consistent total-count contract. This
+# guard prevents a broken "next" link from causing an unbounded crawl while
+# still covering the practical limits of the supported sites.
+MAX_SEARCH_PAGES = 100
+
 
 class SourceError(Exception):
     pass
@@ -78,20 +83,40 @@ class CorporateCareerSourceAdapter(JobSourcePort):
         return response.text
 
     async def search(self, query: SourceSearchQuery) -> Sequence[SourceJobReference]:
-        soup = BeautifulSoup(await self._get(self.listing_url), "lxml")
         refs: dict[str, SourceJobReference] = {}
-        for anchor in soup.select("a[href]"):
-            href = str(anchor.get("href") or "")
-            absolute = urljoin(self.base_url, href)
-            if urlsplit(absolute).netloc != urlsplit(self.base_url).netloc:
-                continue
-            text = anchor.get_text(" ", strip=True)
-            if len(text) < 4 or not any(token in absolute.lower() for token in ("apply", "job", "recruit", "detail", "view")):
-                continue
-            job_id = re.search(r"(?:id|seq|no|jobId|recuNo)[=/_-]([A-Za-z0-9-]+)", absolute, re.IGNORECASE)
-            key = job_id.group(1) if job_id else absolute
-            refs[key] = SourceJobReference(self.source, key, absolute)
-        return list(refs.values())[: query.page_size]
+        pages = [self.listing_url]
+        seen_pages: set[str] = set()
+        for _ in range(MAX_SEARCH_PAGES):
+            page_url = pages.pop(0) if pages else ""
+            if not page_url or page_url in seen_pages:
+                break
+            seen_pages.add(page_url)
+            soup = BeautifulSoup(await self._get(page_url), "lxml")
+            for anchor in soup.select("a[href]"):
+                href = str(anchor.get("href") or "")
+                absolute = urljoin(self.base_url, href)
+                if urlsplit(absolute).netloc != urlsplit(self.base_url).netloc:
+                    continue
+                text = anchor.get_text(" ", strip=True)
+                if len(text) < 4 or not any(token in absolute.lower() for token in ("apply", "job", "recruit", "detail", "view")):
+                    continue
+                job_id = re.search(r"(?:id|seq|no|jobId|recuNo)[=/_-]([A-Za-z0-9-]+)", absolute, re.IGNORECASE)
+                key = job_id.group(1) if job_id else absolute
+                refs[key] = SourceJobReference(self.source, key, absolute)
+            # Follow numbered/next links exposed by common corporate career
+            # pagination components, without treating job-detail links as pages.
+            for anchor in soup.select("nav a[href], .pagination a[href], .paging a[href], [class*=paging] a[href]"):
+                href = str(anchor.get("href") or "")
+                absolute = urljoin(self.base_url, href)
+                label = anchor.get_text(" ", strip=True).lower()
+                is_page_link = re.search(
+                    r"(?:[?&](?:page|pageNo|pageNum|Page_No)=|/page/\d+)",
+                    absolute,
+                    re.IGNORECASE,
+                ) or label in {"다음", "next", ">", "›"}
+                if is_page_link and absolute not in seen_pages and absolute not in pages:
+                    pages.append(absolute)
+        return list(refs.values())
 
     async def fetch_detail(self, reference: SourceJobReference) -> SourceJobPosting:
         soup = BeautifulSoup(await self._get(reference.url), "lxml")
@@ -154,7 +179,7 @@ class LgCareerSourceAdapter(CorporateCareerSourceAdapter):
             if job_id:
                 self._items[job_id] = item
                 refs.append(SourceJobReference(self.source, job_id, f"https://careers.lg.com/apply/detail?id={job_id}"))
-        return refs[: query.page_size]
+        return refs
 
     async def fetch_detail(self, reference: SourceJobReference) -> SourceJobPosting:
         item = self._items.get(reference.source_job_id, {})
@@ -205,7 +230,7 @@ class WantedJobSourceAdapter(JobSourcePort):
 
     async def search(self, query: SourceSearchQuery) -> Sequence[SourceJobReference]:
         refs: dict[str, SourceJobReference] = {}
-        for page in range(max(1, query.page), max(1, query.page) + 5):
+        for page in range(max(1, query.page), max(1, query.page) + MAX_SEARCH_PAGES):
             payload = json.loads(
                 await self._get(
                     f"{self.base_url}/api/chaos/search/v1/position",
@@ -260,20 +285,25 @@ class JobKoreaJobSourceAdapter(JobSourcePort):
         return response.text
 
     async def search(self, query: SourceSearchQuery) -> Sequence[SourceJobReference]:
-        html = await self._get(f"{self.base_url}/Search/", {"stext": query.query})
-        soup = BeautifulSoup(html, "lxml")
         refs: dict[str, SourceJobReference] = {}
         pattern = re.compile(r"/Recruit/GI_Read/(\d+)")
-        for anchor in soup.select("a[href]"):
-            href = str(anchor.get("href") or "")
-            match = pattern.search(href)
-            if match:
-                job_id = match.group(1)
-                refs[job_id] = SourceJobReference(
-                    self.source, job_id, urljoin(self.base_url, href.split("?")[0])
-                )
-        start = max(0, (query.page - 1) * query.page_size)
-        return list(refs.values())[start : start + query.page_size]
+        for page in range(max(1, query.page), max(1, query.page) + MAX_SEARCH_PAGES):
+            html = await self._get(
+                f"{self.base_url}/Search/", {"stext": query.query, "Page_No": page}
+            )
+            soup = BeautifulSoup(html, "lxml")
+            before = len(refs)
+            for anchor in soup.select("a[href]"):
+                href = str(anchor.get("href") or "")
+                match = pattern.search(href)
+                if match:
+                    job_id = match.group(1)
+                    refs[job_id] = SourceJobReference(
+                        self.source, job_id, urljoin(self.base_url, href.split("?")[0])
+                    )
+            if len(refs) == before:
+                break
+        return list(refs.values())
 
     async def fetch_detail(self, reference: SourceJobReference) -> SourceJobPosting:
         html = await self._get(reference.url)
@@ -313,27 +343,30 @@ class SaraminPublicJobSourceAdapter(JobSourcePort):
         return response.text
 
     async def search(self, query: SourceSearchQuery) -> Sequence[SourceJobReference]:
-        html = await self._get(
-            f"{self.base_url}/zf_user/search", {"searchword": query.query, "recruitPage": query.page}
-        )
-        soup = BeautifulSoup(html, "lxml")
         refs: dict[str, SourceJobReference] = {}
         pattern = re.compile(r"/zf_user/jobs/relay/view[^\"']*?rec_idx(?:=|%3D)(\d+)")
-        for anchor in soup.select("a[href]"):
-            href = str(anchor.get("href") or "").replace("&amp;", "&")
-            match = pattern.search(href)
-            if match:
-                job_id = match.group(1)
-                card = anchor.find_parent(class_="item_recruit")
-                if card:
-                    self._search_metadata[job_id] = card.get_text(" ", strip=True)
-                refs[job_id] = SourceJobReference(
-                    self.source,
-                    job_id,
-                    f"{self.base_url}/zf_user/jobs/relay/view?rec_idx={job_id}",
-                )
-        start = max(0, (query.page - 1) * query.page_size)
-        return list(refs.values())[start : start + query.page_size]
+        for page in range(max(1, query.page), max(1, query.page) + MAX_SEARCH_PAGES):
+            html = await self._get(
+                f"{self.base_url}/zf_user/search", {"searchword": query.query, "recruitPage": page}
+            )
+            soup = BeautifulSoup(html, "lxml")
+            before = len(refs)
+            for anchor in soup.select("a[href]"):
+                href = str(anchor.get("href") or "").replace("&amp;", "&")
+                match = pattern.search(href)
+                if match:
+                    job_id = match.group(1)
+                    card = anchor.find_parent(class_="item_recruit")
+                    if card:
+                        self._search_metadata[job_id] = card.get_text(" ", strip=True)
+                    refs[job_id] = SourceJobReference(
+                        self.source,
+                        job_id,
+                        f"{self.base_url}/zf_user/jobs/relay/view?rec_idx={job_id}",
+                    )
+            if len(refs) == before:
+                break
+        return list(refs.values())
 
     async def fetch_detail(self, reference: SourceJobReference) -> SourceJobPosting:
         html = await self._get(reference.url)
@@ -503,18 +536,26 @@ class SaraminJobSourceAdapter(JobSourcePort):
         return [item for item in items if isinstance(item, dict)]
 
     async def search(self, query: SourceSearchQuery) -> Sequence[SourceJobReference]:
-        payload = await self._get({
-            "keywords": query.query,
-            "start": max(0, (query.page - 1) * query.page_size),
-            "count": min(query.page_size, 110),
-            "sort": "pd",
-        })
         refs: dict[str, SourceJobReference] = {}
-        for item in self._items(payload):
-            job_id = str(item.get("id") or "")
-            url = str(item.get("url") or "")
-            if job_id and url:
-                refs[job_id] = SourceJobReference(self.source, job_id, url)
+        start = max(0, (query.page - 1) * query.page_size)
+        for _ in range(MAX_SEARCH_PAGES):
+            payload = await self._get({
+                "keywords": query.query,
+                "start": start,
+                "count": min(query.page_size, 110),
+                "sort": "pd",
+            })
+            items = self._items(payload)
+            before = len(refs)
+            for item in items:
+                job_id = str(item.get("id") or "")
+                url = str(item.get("url") or "")
+                if job_id and url:
+                    refs[job_id] = SourceJobReference(self.source, job_id, url)
+            total = payload.get("jobs", {}).get("count") if isinstance(payload.get("jobs"), dict) else None
+            if not items or len(refs) == before or (isinstance(total, int) and start + len(items) >= total):
+                break
+            start += len(items)
         return list(refs.values())
 
     async def fetch_detail(self, reference: SourceJobReference) -> SourceJobPosting:
