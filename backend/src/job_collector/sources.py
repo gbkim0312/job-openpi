@@ -93,6 +93,129 @@ class WantedJobSourceAdapter(JobSourcePort):
         return parse_wanted_detail(html, reference, datetime.now(UTC))
 
 
+class SaraminJobSourceAdapter(JobSourcePort):
+    """Adapter for Saramin's official Open API (job-search endpoint)."""
+
+    def __init__(
+        self,
+        access_key: str,
+        timeout: float = 20,
+        delay: float = 0.2,
+        base_url: str = "https://oapi.saramin.co.kr",
+    ):
+        self.access_key, self.timeout, self.delay = access_key, timeout, delay
+        self.base_url, self._last_request = base_url.rstrip("/"), 0.0
+
+    @property
+    def source(self):
+        return JobSource.SARAMIN
+
+    @property
+    def capabilities(self):
+        return SourceCapabilities(True, True, True, True, True)
+
+    async def _get(self, params: dict[str, object]) -> dict[str, object]:
+        pause = self.delay - (asyncio.get_running_loop().time() - self._last_request)
+        if pause > 0:
+            await asyncio.sleep(pause)
+        request_params = {
+            "access-key": self.access_key,
+            "fields": "posting-date expiration-date",
+            **params,
+        }
+        async with httpx.AsyncClient(
+            timeout=self.timeout, headers={"Accept": "application/json"}
+        ) as client:
+            response = await client.get(f"{self.base_url}/job-search", params=request_params)
+            self._last_request = asyncio.get_running_loop().time()
+        response.raise_for_status()
+        payload = response.json()
+        if not isinstance(payload, dict):
+            raise SourceParseError("Saramin response is not an object")
+        if payload.get("code") not in (None, 0, "0"):
+            raise SourceError(str(payload.get("message") or "Saramin API error"))
+        return payload
+
+    @staticmethod
+    def _items(payload: dict[str, object]) -> list[dict[str, object]]:
+        jobs = payload.get("jobs")
+        items = jobs.get("job", []) if isinstance(jobs, dict) else []
+        if isinstance(items, dict):
+            items = [items]
+        return [item for item in items if isinstance(item, dict)]
+
+    async def search(self, query: SourceSearchQuery) -> Sequence[SourceJobReference]:
+        payload = await self._get({
+            "keywords": query.query,
+            "start": max(0, (query.page - 1) * query.page_size),
+            "count": min(query.page_size, 110),
+            "sort": "pd",
+        })
+        refs: dict[str, SourceJobReference] = {}
+        for item in self._items(payload):
+            job_id = str(item.get("id") or "")
+            url = str(item.get("url") or "")
+            if job_id and url:
+                refs[job_id] = SourceJobReference(self.source, job_id, url)
+        return list(refs.values())
+
+    async def fetch_detail(self, reference: SourceJobReference) -> SourceJobPosting:
+        payload = await self._get({"id": reference.source_job_id, "count": 1})
+        item = next(
+            (x for x in self._items(payload) if str(x.get("id")) == reference.source_job_id),
+            None,
+        )
+        if item is None:
+            raise SourceNotFoundError(reference.url)
+        return parse_saramin_job(item, reference, datetime.now(UTC))
+
+
+def _saramin_value(value: object, key: str = "name") -> str | None:
+    if isinstance(value, dict):
+        value = value.get(key)
+    return str(value).strip() if value is not None and str(value).strip() else None
+
+
+def _parse_saramin_datetime(value: object) -> datetime | None:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def parse_saramin_job(
+    item: dict[str, object], reference: SourceJobReference, fetched_at: datetime
+) -> SourceJobPosting:
+    position = item.get("position") if isinstance(item.get("position"), dict) else {}
+    company = item.get("company") if isinstance(item.get("company"), dict) else {}
+    detail = company.get("detail") if isinstance(company.get("detail"), dict) else company
+    experience = position.get("experience-level") if isinstance(position.get("experience-level"), dict) else {}
+    location = _saramin_value(position.get("location"))
+    job_type = _saramin_value(position.get("job-type"))
+    title = _saramin_value(position.get("title")) or ""
+    if not title:
+        raise SourceParseError("Saramin job title unavailable")
+    keywords = tuple(x.strip() for x in str(item.get("keyword") or "").split(",") if x.strip())
+    return SourceJobPosting(
+        reference.source, reference.source_job_id, str(item.get("url") or reference.url), title,
+        _saramin_value(detail), raw_location=location,
+        raw_experience=_saramin_value(experience), raw_employment_type=job_type,
+        raw_deadline=str(
+            item.get("expiration-date") or _saramin_value(item.get("close-type")) or ""
+        )
+        or None,
+        raw_status="active" if item.get("active") in (1, "1", True) else "closed",
+        skills=keywords, posted_at=_parse_saramin_datetime(item.get("posting-date")),
+        fetched_at=fetched_at,
+        raw_payload={
+            "saramin": item,
+            "has_apply_action": item.get("active") in (1, "1", True),
+        },
+    )
+
+
 def _text_list(soup: BeautifulSoup, label: str) -> tuple[str, ...]:
     heading = soup.find(
         lambda t: (

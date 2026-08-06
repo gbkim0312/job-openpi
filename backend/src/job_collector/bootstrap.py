@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     wanted_max_concurrency: int = Field(2, alias="WANTED_MAX_CONCURRENCY")
     saramin_enabled: bool = Field(False, alias="SARAMIN_ENABLED")
     saramin_access_key: str | None = Field(None, alias="SARAMIN_ACCESS_KEY")
+    saramin_base_url: str = Field("https://oapi.saramin.co.kr", alias="SARAMIN_BASE_URL")
     jobkorea_enabled: bool = Field(False, alias="JOBKOREA_ENABLED")
     http_timeout_seconds: float = Field(20, alias="HTTP_TIMEOUT_SECONDS")
     http_max_retries: int = Field(3, alias="HTTP_MAX_RETRIES")

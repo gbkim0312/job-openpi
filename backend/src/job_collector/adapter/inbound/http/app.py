@@ -33,7 +33,7 @@ from ....runtime_settings import (
     save_schedule_settings,
     seed_schedule_settings,
 )
-from ....sources import WantedJobSourceAdapter
+from ....sources import SaraminJobSourceAdapter, WantedJobSourceAdapter
 from ....sync import SyncService
 
 
@@ -102,17 +102,17 @@ def create_app() -> FastAPI:
     settings = Settings()
     sessions = session_factory(settings.database_url)
     profiles = ProfileStore(settings.profiles_dir)
-    adapters = (
-        {
-            "WANTED": WantedJobSourceAdapter(
-                settings.wanted_base_url,
-                settings.http_timeout_seconds,
-                settings.wanted_request_delay_seconds,
-            )
-        }
-        if settings.wanted_enabled
-        else {}
-    )
+    adapters = {}
+    if settings.wanted_enabled:
+        adapters["WANTED"] = WantedJobSourceAdapter(
+            settings.wanted_base_url,
+            settings.http_timeout_seconds,
+            settings.wanted_request_delay_seconds,
+        )
+    if settings.saramin_enabled and settings.saramin_access_key:
+        adapters["SARAMIN"] = SaraminJobSourceAdapter(
+            settings.saramin_access_key, settings.http_timeout_seconds, base_url=settings.saramin_base_url
+        )
     sync_service = SyncService(sessions, adapters, profiles)
 
     @asynccontextmanager
@@ -317,9 +317,18 @@ def create_app() -> FastAPI:
                 },
                 {
                     "source": "SARAMIN",
-                    "enabled": False,
-                    "status": "DISABLED",
-                    "disabled_reason": "access key is not configured",
+                    "enabled": "SARAMIN" in adapters,
+                    "status": "HEALTHY" if "SARAMIN" in adapters else "DISABLED",
+                    "disabled_reason": (
+                        "access key is not configured" if "SARAMIN" not in adapters else None
+                    ),
+                    "capabilities": {
+                        "keyword_search": True,
+                        "incremental_sync": True,
+                        "status_check": True,
+                        "posted_date": True,
+                        "deadline": True,
+                    },
                 },
                 {
                     "source": "JOBKOREA",
