@@ -49,27 +49,61 @@ class SyncService:
                 refs = []
                 profile_matches: dict[str, set[tuple[str, str]]] = {}
                 if getattr(adapter, "profile_independent", False):
+                    run.query_results = {"phase": "search", "profile": "ALL_PROFILES", "query": ""}
+                    await session.commit()
                     refs = list(await adapter.search(SourceSearchQuery(query="")))
                     for ref in refs:
                         profile_matches[ref.source_job_id] = {
                             (profile.id, "") for profile in selected_profiles
                         }
                 else:
-                    for profile in selected_profiles:
-                        queries = list(
+                    query_plan = [
+                        (
+                            profile,
+                            query,
+                        )
+                        for profile in selected_profiles
+                        for query in list(
                             dict.fromkeys(
                                 profile.source_queries.get(source, profile.queries)
                                 + profile.company_queries.get(source, [])
                             )
                         )
-                        for query in queries:
-                            for ref in await adapter.search(SourceSearchQuery(query=query)):
-                                refs.append(ref)
-                                profile_matches.setdefault(ref.source_job_id, set()).add(
-                                    (profile.id, query)
-                                )
+                    ]
+                    total_queries = len(query_plan)
+                    for completed_queries, (profile, query) in enumerate(query_plan):
+                        if cancel_event and cancel_event.is_set():
+                            run.status = "CANCELLED"
+                            run.finished_at = now()
+                            await session.commit()
+                            return run
+                        run.query_results = {
+                            "phase": "search",
+                            "profile": profile.id,
+                            "query": query,
+                            "completed_queries": completed_queries,
+                            "total_queries": total_queries,
+                        }
+                        await session.commit()
+                        for ref in await adapter.search(SourceSearchQuery(query=query)):
+                            refs.append(ref)
+                            profile_matches.setdefault(ref.source_job_id, set()).add(
+                                (profile.id, query)
+                            )
+                        completed_queries += 1
+                        run.searched_count = len({ref.source_job_id for ref in refs})
+                        run.query_results = {
+                            "phase": "search",
+                            "profile": profile.id,
+                            "query": query,
+                            "completed_queries": completed_queries,
+                            "total_queries": total_queries,
+                        }
+                        await session.commit()
                 unique = {r.source_job_id: r for r in refs}
                 run.searched_count = len(unique)
+                run.query_results = {"phase": "fetch", "total_refs": len(unique)}
+                await session.commit()
                 for ref in unique.values():
                     if cancel_event and cancel_event.is_set():
                         run.status = "CANCELLED"
