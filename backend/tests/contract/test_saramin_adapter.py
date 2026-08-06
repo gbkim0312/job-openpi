@@ -4,7 +4,6 @@ from httpx import Response
 from job_collector.domain.model import SourceJobReference, SourceSearchQuery
 from job_collector.sources import SaraminJobSourceAdapter
 
-
 PAYLOAD = {
     "jobs": {"job": [{
         "id": "s-1", "url": "https://www.saramin.co.kr/zf_user/jobs/relay/view?rec_idx=1",

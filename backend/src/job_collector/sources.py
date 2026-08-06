@@ -184,7 +184,7 @@ def parse_jobkorea_detail(
     posted = None
     if json_ld.get("datePosted"):
         try:
-            posted = datetime.fromisoformat(str(json_ld["datePosted"]).replace("Z", "+00:00"))
+            posted = datetime.fromisoformat(str(json_ld["datePosted"]))
         except ValueError:
             pass
     raw = soup.get_text(" ", strip=True)
@@ -285,7 +285,7 @@ def _parse_saramin_datetime(value: object) -> datetime | None:
     if not value:
         return None
     try:
-        return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        return datetime.fromisoformat(str(value))
     except ValueError:
         return None
 
