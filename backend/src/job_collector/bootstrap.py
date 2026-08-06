@@ -16,6 +16,8 @@ class Settings(BaseSettings):
     wanted_enabled: bool = Field(True, alias="WANTED_ENABLED")
     wanted_base_url: str = Field("https://www.wanted.co.kr", alias="WANTED_BASE_URL")
     wanted_request_delay_seconds: float = Field(1.5, alias="WANTED_REQUEST_DELAY_SECONDS")
+    request_random_delay_enabled: bool = Field(False, alias="REQUEST_RANDOM_DELAY_ENABLED")
+    request_random_delay_max_seconds: float = Field(0.5, ge=0, le=60, alias="REQUEST_RANDOM_DELAY_MAX_SECONDS")
     wanted_max_concurrency: int = Field(2, alias="WANTED_MAX_CONCURRENCY")
     saramin_enabled: bool = Field(False, alias="SARAMIN_ENABLED")
     saramin_access_key: str | None = Field(None, alias="SARAMIN_ACCESS_KEY")

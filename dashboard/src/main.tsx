@@ -708,6 +708,8 @@ function Settings() {
   const [key, setKey] = useState(sessionStorage.getItem("adminApiKey") || "");
   const [syncCron, setSyncCron] = useState("0 2 * * *");
   const [recheckCron, setRecheckCron] = useState("0 3 * * *");
+  const [randomDelayEnabled, setRandomDelayEnabled] = useState(false);
+  const [randomDelayMax, setRandomDelayMax] = useState("0.5");
   const [confirmText, setConfirmText] = useState("");
   const [message, setMessage] = useState("");
   const saveKey = () => {
@@ -724,6 +726,16 @@ function Settings() {
       setMessage(`일정 조회 실패: ${String(error)}`);
     }
   };
+  const loadRequestPacing = async () => {
+    try {
+      const data = await request("/v1/admin/settings/request-pacing");
+      setRandomDelayEnabled(Boolean(data.random_delay_enabled));
+      setRandomDelayMax(String(data.random_delay_max_seconds));
+      setMessage("요청 지연 설정을 불러왔습니다.");
+    } catch (error) {
+      setMessage(`요청 지연 설정 조회 실패: ${String(error)}`);
+    }
+  };
   const saveSchedule = async () => {
     try {
       await request("/v1/admin/settings/schedule", {
@@ -738,6 +750,20 @@ function Settings() {
       );
     } catch (error) {
       setMessage(`일정 저장 실패: ${String(error)}`);
+    }
+  };
+  const saveRequestPacing = async () => {
+    try {
+      await request("/v1/admin/settings/request-pacing", {
+        method: "PUT",
+        body: JSON.stringify({
+          random_delay_enabled: randomDelayEnabled,
+          random_delay_max_seconds: Number(randomDelayMax),
+        }),
+      });
+      setMessage("요청 지연 설정을 저장했고 즉시 적용했습니다.");
+    } catch (error) {
+      setMessage(`요청 지연 설정 저장 실패: ${String(error)}`);
     }
   };
   const deleteAll = async () => {
@@ -791,6 +817,34 @@ function Settings() {
         </label>
         <button onClick={loadSchedule}>현재 일정 불러오기</button>
         <button onClick={saveSchedule}>일정 저장</button>
+      </section>
+      <section className="settings-card">
+        <h2>요청 속도 제한</h2>
+        <p>
+          기본 지연 시간에 0초부터 최대값 사이의 무작위 지연을 추가합니다.
+          저장 즉시 실행 중인 수집에도 적용됩니다.
+        </p>
+        <label>
+          <input
+            type="checkbox"
+            checked={randomDelayEnabled}
+            onChange={(e) => setRandomDelayEnabled(e.target.checked)}
+          />{" "}
+          랜덤 지연 활성화
+        </label>
+        <label>
+          랜덤 지연 최대(초)
+          <input
+            type="number"
+            min="0"
+            max="60"
+            step="0.1"
+            value={randomDelayMax}
+            onChange={(e) => setRandomDelayMax(e.target.value)}
+          />
+        </label>
+        <button onClick={loadRequestPacing}>현재 설정 불러오기</button>
+        <button onClick={saveRequestPacing}>요청 지연 설정 저장</button>
       </section>
       <section className="settings-card danger-zone">
         <h2>수집 공고 전체 삭제</h2>

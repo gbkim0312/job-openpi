@@ -10,7 +10,7 @@ from uuid import UUID
 from apscheduler.triggers.cron import CronTrigger
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import and_, delete, func, or_, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -29,9 +29,13 @@ from ....persistence import (
 )
 from ....profiles import ProfileStore, SearchProfile
 from ....runtime_settings import (
+    RequestPacingSettings,
     ScheduleSettings,
+    load_request_pacing_settings,
     load_schedule_settings,
+    save_request_pacing_settings,
     save_schedule_settings,
+    seed_request_pacing_settings,
     seed_schedule_settings,
 )
 from ....sources import (
@@ -53,6 +57,11 @@ class SyncRequest(BaseModel):
 class ScheduleRequest(BaseModel):
     sync_cron: str
     recheck_cron: str
+
+
+class RequestPacingRequest(BaseModel):
+    random_delay_enabled: bool
+    random_delay_max_seconds: float = Field(0.5, ge=0, le=60)
 
 
 class DeleteAllJobsRequest(BaseModel):
@@ -116,22 +125,31 @@ def create_app() -> FastAPI:
             settings.wanted_base_url,
             settings.http_timeout_seconds,
             settings.wanted_request_delay_seconds,
+            settings.request_random_delay_enabled,
+            settings.request_random_delay_max_seconds,
         )
     if settings.saramin_enabled and settings.saramin_access_key:
         adapters["SARAMIN"] = SaraminJobSourceAdapter(
-            settings.saramin_access_key, settings.http_timeout_seconds, base_url=settings.saramin_base_url
+            settings.saramin_access_key, settings.http_timeout_seconds,
+            random_delay_enabled=settings.request_random_delay_enabled,
+            random_delay_max_seconds=settings.request_random_delay_max_seconds,
+            base_url=settings.saramin_base_url,
         )
     elif settings.saramin_public_enabled:
         adapters["SARAMIN"] = SaraminPublicJobSourceAdapter(
             settings.saramin_public_base_url,
             settings.http_timeout_seconds,
             settings.saramin_public_request_delay_seconds,
+            settings.request_random_delay_enabled,
+            settings.request_random_delay_max_seconds,
         )
     if settings.jobkorea_enabled:
         adapters["JOBKOREA"] = JobKoreaJobSourceAdapter(
             settings.jobkorea_base_url,
             settings.http_timeout_seconds,
             settings.jobkorea_request_delay_seconds,
+            settings.request_random_delay_enabled,
+            settings.request_random_delay_max_seconds,
         )
     corporate_sites = {
         "SAMSUNG": (settings.samsung_enabled, "https://www.samsungcareers.com/"),
@@ -141,9 +159,17 @@ def create_app() -> FastAPI:
     for source, (enabled, listing_url) in corporate_sites.items():
         if enabled:
             adapters[source] = (
-                LgCareerSourceAdapter(settings.http_timeout_seconds)
+                LgCareerSourceAdapter(
+                    settings.http_timeout_seconds,
+                    random_delay_enabled=settings.request_random_delay_enabled,
+                    random_delay_max_seconds=settings.request_random_delay_max_seconds,
+                )
                 if source == "LG"
-                else CorporateCareerSourceAdapter(JobSource(source), listing_url, settings.http_timeout_seconds)
+                else CorporateCareerSourceAdapter(
+                    JobSource(source), listing_url, settings.http_timeout_seconds,
+                    random_delay_enabled=settings.request_random_delay_enabled,
+                    random_delay_max_seconds=settings.request_random_delay_max_seconds,
+                )
             )
     sync_service = SyncService(sessions, adapters, profiles)
     sync_lock = asyncio.Lock()
@@ -157,6 +183,17 @@ def create_app() -> FastAPI:
         async with sessions() as session:
             await profiles.seed_and_load(session)
             await seed_schedule_settings(session, settings.sync_cron, settings.recheck_cron)
+            await seed_request_pacing_settings(
+                session,
+                settings.request_random_delay_enabled,
+                settings.request_random_delay_max_seconds,
+            )
+            pacing = await load_request_pacing_settings(session)
+        settings.request_random_delay_enabled = pacing.random_delay_enabled
+        settings.request_random_delay_max_seconds = pacing.random_delay_max_seconds
+        for adapter in adapters.values():
+            adapter.random_delay_enabled = pacing.random_delay_enabled
+            adapter.random_delay_max_seconds = pacing.random_delay_max_seconds
         app.state.settings, app.state.sessions, app.state.profiles, app.state.sync = (
             settings,
             sessions,
@@ -577,6 +614,34 @@ def create_app() -> FastAPI:
             ScheduleSettings(sync_cron=payload.sync_cron, recheck_cron=payload.recheck_cron),
         )
         return {"sync_cron": payload.sync_cron, "recheck_cron": payload.recheck_cron}
+
+    @app.get("/api/v1/admin/settings/request-pacing", dependencies=[Depends(admin)])
+    async def get_request_pacing(session: AsyncSession = Depends(db)):
+        value = await load_request_pacing_settings(session)
+        return {
+            "random_delay_enabled": value.random_delay_enabled,
+            "random_delay_max_seconds": value.random_delay_max_seconds,
+        }
+
+    @app.put("/api/v1/admin/settings/request-pacing", dependencies=[Depends(admin)])
+    async def update_request_pacing(
+        payload: RequestPacingRequest, session: AsyncSession = Depends(db)
+    ):
+        value = RequestPacingSettings(
+            random_delay_enabled=payload.random_delay_enabled,
+            random_delay_max_seconds=payload.random_delay_max_seconds,
+        )
+        await save_request_pacing_settings(session, value)
+        settings.request_random_delay_enabled = value.random_delay_enabled
+        settings.request_random_delay_max_seconds = value.random_delay_max_seconds
+        for adapter in adapters.values():
+            adapter.random_delay_enabled = value.random_delay_enabled
+            adapter.random_delay_max_seconds = value.random_delay_max_seconds
+        return {
+            "random_delay_enabled": value.random_delay_enabled,
+            "random_delay_max_seconds": value.random_delay_max_seconds,
+            "applied": True,
+        }
 
     @app.get("/api/v1/admin/crawl-runs", dependencies=[Depends(admin)])
     async def crawl_runs(session: AsyncSession = Depends(db)):

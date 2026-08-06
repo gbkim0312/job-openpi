@@ -91,6 +91,8 @@ curl http://localhost:8000/ready
 
 사람인 인증키 없이 사용하려면 `SARAMIN_PUBLIC_ENABLED=true`를 설정합니다. 이 경우 사람인 공개 검색·상세 페이지를 직접 조회하며 `SARAMIN_PUBLIC_REQUEST_DELAY_SECONDS`로 요청 간격을 조절합니다. `SARAMIN_ENABLED=true`와 유효한 API 키가 함께 설정되면 공식 API 방식이 우선됩니다.
 
+모든 출처의 기본 요청 간격에 무작위 지연을 추가하려면 `REQUEST_RANDOM_DELAY_ENABLED=true`와 `REQUEST_RANDOM_DELAY_MAX_SECONDS`(기본 0.5초)를 설정합니다. 대시보드 설정에서도 변경할 수 있으며 저장 즉시 실행 중인 어댑터에 반영됩니다.
+
 잡코리아는 `JOBKOREA_ENABLED=true`로 공개 검색/상세 페이지 수집을 활성화할 수 있습니다. 공개 HTML과 JSON-LD에 노출된 정보만 사용하며, 요청 간격은 `JOBKOREA_REQUEST_DELAY_SECONDS`로 조정합니다. 사이트 정책 변경이나 접근 제한 시 해당 공고만 실패 처리될 수 있습니다.
 
 삼성·LG·현대 공식 채용 사이트도 공개 페이지 어댑터로 지원합니다. 각각 `SAMSUNG_ENABLED`, `LG_ENABLED`, `HYUNDAI_ENABLED`를 `true`로 설정하면 활성화됩니다. 상세 페이지 구조 변경이나 접근 제한은 개별 실패로 기록하며, 로그인·캡차·비공개 API 우회는 수행하지 않습니다.
@@ -178,6 +180,8 @@ curl -X POST http://localhost:8000/api/v1/admin/sync \
 | --- | --- | --- |
 | `GET` | `/api/v1/admin/settings/schedule` | 현재 수집 일정 조회 |
 | `PUT` | `/api/v1/admin/settings/schedule` | 수집 일정 변경 |
+| `GET` | `/api/v1/admin/settings/request-pacing` | 요청 랜덤 지연 설정 조회 |
+| `PUT` | `/api/v1/admin/settings/request-pacing` | 요청 랜덤 지연 설정 변경(즉시 적용) |
 
 ```json
 {"sync_cron":"0 2 * * *","recheck_cron":"0 3 * * *"}
