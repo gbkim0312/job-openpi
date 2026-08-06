@@ -269,9 +269,17 @@ def parse_jobkorea_detail(
     location_data = json_ld.get("jobLocation")
     address = location_data.get("address") if isinstance(location_data, dict) else None
     location = address.get("streetAddress") if isinstance(address, dict) else None
+    meta_description = soup.select_one('meta[name="description"]')
+    summary = str(meta_description.get("content") or "") if meta_description else ""
     experience = str(json_ld.get("experienceRequirements") or "") or None
+    if not experience:
+        experience_match = re.search(r"경력\s*:\s*([^,]+)", summary)
+        experience = experience_match.group(1).strip() if experience_match else None
     employment = str(json_ld.get("employmentType") or "") or None
     deadline = str(json_ld.get("validThrough") or "") or None
+    if not deadline:
+        deadline_match = re.search(r"마감일\s*:\s*(\d{4}[.-]\d{1,2}[.-]\d{1,2})", summary)
+        deadline = deadline_match.group(1) if deadline_match else None
     posted = None
     if json_ld.get("datePosted"):
         try:
