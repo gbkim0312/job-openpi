@@ -262,6 +262,19 @@ const blank: Profile = {
   source_queries: { WANTED: [] },
   company_queries: { WANTED: [] },
 };
+/**
+ * Keep the editor state complete even when an older API response does not
+ * contain fields that were added later (such as company_queries).
+ */
+const normalizeProfile = (profile: Partial<Profile>): Profile => ({
+  id: profile.id || "",
+  display_name: profile.display_name || "",
+  queries: profile.queries || [],
+  include_keywords: profile.include_keywords || [],
+  exclude_keywords: profile.exclude_keywords || [],
+  source_queries: profile.source_queries || {},
+  company_queries: profile.company_queries || {},
+});
 const lines = (value: string) =>
   value
     .split("\n")
@@ -299,9 +312,13 @@ function Profiles() {
   );
   const save = async () => {
     try {
+      // Always send the complete profile shape. This prevents company queries
+      // from being dropped when editing profiles created before that field
+      // existed or when the response is missing optional keys.
+      const payload = normalizeProfile(form);
       await request(
-        editing ? `/v1/admin/profiles/${form.id}` : "/v1/admin/profiles",
-        { method: editing ? "PUT" : "POST", body: JSON.stringify(form) },
+        editing ? `/v1/admin/profiles/${payload.id}` : "/v1/admin/profiles",
+        { method: editing ? "PUT" : "POST", body: JSON.stringify(payload) },
       );
       setMessage("저장되었습니다.");
       setForm(blank);
@@ -333,7 +350,7 @@ function Profiles() {
             <p>{p.queries.join(", ")}</p>
             <button
               onClick={() => {
-                setForm(p);
+                setForm(normalizeProfile(p));
                 setEditing(true);
               }}
             >
