@@ -149,6 +149,7 @@ curl -G http://localhost:8000/api/v1/jobs \
 | `POST` | `/api/v1/admin/jobs/{job_id}/recheck` | 특정 공고 재확인 실행 |
 | `POST` | `/api/v1/admin/profiles/reload` | YAML 프로필 다시 로드 |
 | `GET` | `/api/v1/admin/crawl-runs` | 최근 수집 실행 목록 |
+| `POST` | `/api/v1/admin/crawl-runs/recover` | `RUNNING`으로 고착된 실행을 실패 처리 |
 | `GET` | `/api/v1/admin/crawl-runs/{run_id}` | 수집 실행 상세 |
 | `DELETE` | `/api/v1/admin/jobs` | 공고·변경 이력 전체 삭제 (확인 문자열 필요) |
 

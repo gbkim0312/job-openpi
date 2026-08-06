@@ -11,7 +11,7 @@ from apscheduler.triggers.cron import CronTrigger
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
-from sqlalchemy import and_, delete, func, or_, select
+from sqlalchemy import and_, delete, func, or_, select, update
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -200,6 +200,20 @@ def create_app() -> FastAPI:
                 settings.request_random_delay_max_seconds,
             )
             pacing = await load_request_pacing_settings(session)
+            stale_before = datetime.now(UTC) - timedelta(minutes=15)
+            await session.execute(
+                update(CrawlRunRow)
+                .where(
+                    CrawlRunRow.status == "RUNNING",
+                    CrawlRunRow.started_at < stale_before,
+                )
+                .values(
+                    status="FAILED",
+                    finished_at=datetime.now(UTC),
+                    error_summary={"error": "process restarted or run became stale"},
+                )
+            )
+            await session.commit()
         settings.request_random_delay_enabled = pacing.random_delay_enabled
         settings.request_random_delay_max_seconds = pacing.random_delay_max_seconds
         for adapter in adapters.values():
@@ -726,6 +740,20 @@ def create_app() -> FastAPI:
                 for x in rows
             ]
         }
+
+    @app.post("/api/v1/admin/crawl-runs/recover", dependencies=[Depends(admin)])
+    async def recover_stale_crawl_runs(session: AsyncSession = Depends(db)):
+        result = await session.execute(
+            update(CrawlRunRow)
+            .where(CrawlRunRow.status == "RUNNING")
+            .values(
+                status="FAILED",
+                finished_at=datetime.now(UTC),
+                error_summary={"error": "manually recovered stale run"},
+            )
+        )
+        await session.commit()
+        return {"status": "RECOVERED", "count": result.rowcount or 0}
 
     @app.get("/api/v1/admin/crawl-runs/{run_id}", dependencies=[Depends(admin)])
     async def crawl_run(run_id: UUID, session: AsyncSession = Depends(db)):
