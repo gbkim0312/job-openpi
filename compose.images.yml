@@ -1,4 +1,25 @@
 services:
+  tor:
+    image: peterdavehello/tor-socks-proxy:latest
+    container_name: job-collector-tor
+    restart: unless-stopped
+    expose: ["9050", "9051"]
+    environment:
+      TOR_SOCKS_PORT: "0.0.0.0:9050"
+      TOR_CONTROL_PORT: "0.0.0.0:9051"
+      TOR_HASHED_CONTROL_PASSWORD: ${TOR_HASHED_CONTROL_PASSWORD:-}
+      TOR_COOKIE_AUTHENTICATION: "0"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        exec /usr/bin/tor -f /etc/tor/torrc
+        --SocksPort "$${TOR_SOCKS_PORT}"
+        --ControlPort "$${TOR_CONTROL_PORT}"
+        --HashedControlPassword "$${TOR_HASHED_CONTROL_PASSWORD}"
+        --CookieAuthentication "$${TOR_COOKIE_AUTHENTICATION}"
+    volumes:
+      - tor-data:/var/lib/tor
+
   postgres:
     image: postgres:17-alpine
     container_name: job-collector-postgres
@@ -39,6 +60,8 @@ services:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
+      tor:
+        condition: service_started
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)"]
       interval: 30s
@@ -58,6 +81,8 @@ services:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
+      tor:
+        condition: service_started
 
   dashboard:
     image: ${DASHBOARD_IMAGE:-job-collector-dashboard:local}
@@ -68,3 +93,6 @@ services:
     depends_on:
       api:
         condition: service_healthy
+
+volumes:
+  tor-data:

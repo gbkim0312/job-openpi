@@ -766,6 +766,14 @@ function Settings() {
       setMessage(`요청 지연 설정 저장 실패: ${String(error)}`);
     }
   };
+  const requestTorNewnym = async () => {
+    try {
+      await request("/v1/admin/tor/newnym", { method: "POST" });
+      setMessage("Tor에 새 회선을 요청했습니다. 진행 중인 요청은 재시도하지 않습니다.");
+    } catch (error) {
+      setMessage(`Tor 새 회선 요청 실패: ${String(error)}`);
+    }
+  };
   const deleteAll = async () => {
     if (confirmText !== "DELETE_ALL") return;
     try {
@@ -845,6 +853,14 @@ function Settings() {
         </label>
         <button onClick={loadRequestPacing}>현재 설정 불러오기</button>
         <button onClick={saveRequestPacing}>요청 지연 설정 저장</button>
+      </section>
+      <section className="settings-card">
+        <h2>Tor 프록시</h2>
+        <p>
+          Tor 사용 여부와 ControlPort는 환경변수로 설정합니다. 아래 버튼은
+          관리자용 수동 회선 변경 요청이며 차단 요청을 자동 재시도하지 않습니다.
+        </p>
+        <button onClick={requestTorNewnym}>새 Tor 회선 요청</button>
       </section>
       <section className="settings-card danger-zone">
         <h2>수집 공고 전체 삭제</h2>

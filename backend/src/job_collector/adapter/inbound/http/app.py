@@ -47,6 +47,7 @@ from ....sources import (
     WantedJobSourceAdapter,
 )
 from ....sync import SyncService
+from ....tor import TorControlError, request_newnym
 
 
 class SyncRequest(BaseModel):
@@ -127,12 +128,14 @@ def create_app() -> FastAPI:
             settings.wanted_request_delay_seconds,
             settings.request_random_delay_enabled,
             settings.request_random_delay_max_seconds,
+            settings.tor_socks_proxy_url if settings.tor_enabled else None,
         )
     if settings.saramin_enabled and settings.saramin_access_key:
         adapters["SARAMIN"] = SaraminJobSourceAdapter(
             settings.saramin_access_key, settings.http_timeout_seconds,
             random_delay_enabled=settings.request_random_delay_enabled,
             random_delay_max_seconds=settings.request_random_delay_max_seconds,
+            proxy=settings.tor_socks_proxy_url if settings.tor_enabled else None,
             base_url=settings.saramin_base_url,
         )
     elif settings.saramin_public_enabled:
@@ -142,6 +145,7 @@ def create_app() -> FastAPI:
             settings.saramin_public_request_delay_seconds,
             settings.request_random_delay_enabled,
             settings.request_random_delay_max_seconds,
+            settings.tor_socks_proxy_url if settings.tor_enabled else None,
         )
     if settings.jobkorea_enabled:
         adapters["JOBKOREA"] = JobKoreaJobSourceAdapter(
@@ -150,6 +154,7 @@ def create_app() -> FastAPI:
             settings.jobkorea_request_delay_seconds,
             settings.request_random_delay_enabled,
             settings.request_random_delay_max_seconds,
+            settings.tor_socks_proxy_url if settings.tor_enabled else None,
         )
     corporate_sites = {
         "SAMSUNG": (settings.samsung_enabled, "https://www.samsungcareers.com/"),
@@ -163,12 +168,14 @@ def create_app() -> FastAPI:
                     settings.http_timeout_seconds,
                     random_delay_enabled=settings.request_random_delay_enabled,
                     random_delay_max_seconds=settings.request_random_delay_max_seconds,
+                    proxy=settings.tor_socks_proxy_url if settings.tor_enabled else None,
                 )
                 if source == "LG"
                 else CorporateCareerSourceAdapter(
                     JobSource(source), listing_url, settings.http_timeout_seconds,
                     random_delay_enabled=settings.request_random_delay_enabled,
                     random_delay_max_seconds=settings.request_random_delay_max_seconds,
+                    proxy=settings.tor_socks_proxy_url if settings.tor_enabled else None,
                 )
             )
     sync_service = SyncService(sessions, adapters, profiles)
@@ -642,6 +649,20 @@ def create_app() -> FastAPI:
             "random_delay_max_seconds": value.random_delay_max_seconds,
             "applied": True,
         }
+
+    @app.post("/api/v1/admin/tor/newnym", dependencies=[Depends(admin)])
+    async def tor_newnym():
+        if not settings.tor_control_enabled:
+            raise HTTPException(409, "Tor ControlPort is disabled")
+        try:
+            await request_newnym(
+                settings.tor_control_host,
+                settings.tor_control_port,
+                settings.tor_control_password,
+            )
+        except TorControlError as exc:
+            raise HTTPException(502, f"Tor ControlPort error: {exc}") from exc
+        return {"status": "NEWNYM_SENT"}
 
     @app.get("/api/v1/admin/crawl-runs", dependencies=[Depends(admin)])
     async def crawl_runs(session: AsyncSession = Depends(db)):

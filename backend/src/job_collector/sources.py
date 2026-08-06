@@ -33,6 +33,11 @@ def _pacing_delay(adapter: object) -> float:
     return delay
 
 
+def _client_options(adapter: object) -> dict[str, str]:
+    proxy = getattr(adapter, "proxy", None)
+    return {"proxy": proxy} if proxy else {}
+
+
 class SourceError(Exception):
     pass
 
@@ -61,12 +66,13 @@ class JobSourcePort(ABC):
 class CorporateCareerSourceAdapter(JobSourcePort):
     """Conservative adapter for public corporate career listing/detail pages."""
 
-    def __init__(self, source: JobSource, listing_url: str, timeout: float = 20, delay: float = 1.5, random_delay_enabled: bool = False, random_delay_max_seconds: float = 0.0):
+    def __init__(self, source: JobSource, listing_url: str, timeout: float = 20, delay: float = 1.5, random_delay_enabled: bool = False, random_delay_max_seconds: float = 0.0, proxy: str | None = None):
         self._source, self.listing_url = source, listing_url
         self.base_url, self.timeout, self.delay = f"{urlsplit(listing_url).scheme}://{urlsplit(listing_url).netloc}", timeout, delay
         self._last_request = 0.0
         self.random_delay_enabled = random_delay_enabled
         self.random_delay_max_seconds = random_delay_max_seconds
+        self.proxy = proxy
 
     @property
     def source(self):
@@ -84,7 +90,7 @@ class CorporateCareerSourceAdapter(JobSourcePort):
         pause = _pacing_delay(self) - (asyncio.get_running_loop().time() - self._last_request)
         if pause > 0:
             await asyncio.sleep(pause)
-        async with httpx.AsyncClient(timeout=self.timeout, follow_redirects=True, headers={"User-Agent": "job-collector/0.1 (+public-page-collector)"}) as client:
+        async with httpx.AsyncClient(**_client_options(self), timeout=self.timeout, follow_redirects=True, headers={"User-Agent": "job-collector/0.1 (+public-page-collector)"}) as client:
             response = await client.get(url)
             self._last_request = asyncio.get_running_loop().time()
         if response.status_code == 404:
@@ -155,8 +161,8 @@ class CorporateCareerSourceAdapter(JobSourcePort):
 class LgCareerSourceAdapter(CorporateCareerSourceAdapter):
     """LG Careers public listing service used by its careers web application."""
 
-    def __init__(self, timeout: float = 20, delay: float = 1.5, random_delay_enabled: bool = False, random_delay_max_seconds: float = 0.0):
-        super().__init__(JobSource.LG, "https://careers.lg.com/apply", timeout, delay, random_delay_enabled, random_delay_max_seconds)
+    def __init__(self, timeout: float = 20, delay: float = 1.5, random_delay_enabled: bool = False, random_delay_max_seconds: float = 0.0, proxy: str | None = None):
+        super().__init__(JobSource.LG, "https://careers.lg.com/apply", timeout, delay, random_delay_enabled, random_delay_max_seconds, proxy)
         self._items: dict[str, dict[str, object]] = {}
 
     async def search(self, query: SourceSearchQuery) -> Sequence[SourceJobReference]:
@@ -173,7 +179,7 @@ class LgCareerSourceAdapter(CorporateCareerSourceAdapter):
             "desireLocList": [],
             "jobGroupList": [],
         }
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
+        async with httpx.AsyncClient(**_client_options(self), timeout=self.timeout) as client:
             response = await client.post("https://api.careers.lg.com/rmk/job/retrieveJobNoticesList", json=payload)
             self._last_request = asyncio.get_running_loop().time()
         response.raise_for_status()
@@ -212,11 +218,12 @@ class LgCareerSourceAdapter(CorporateCareerSourceAdapter):
 class WantedJobSourceAdapter(JobSourcePort):
     """Conservative public-page adapter; it never bypasses access controls."""
 
-    def __init__(self, base_url: str, timeout: float = 20, delay: float = 1.5, random_delay_enabled: bool = False, random_delay_max_seconds: float = 0.0):
+    def __init__(self, base_url: str, timeout: float = 20, delay: float = 1.5, random_delay_enabled: bool = False, random_delay_max_seconds: float = 0.0, proxy: str | None = None):
         self.base_url, self.timeout, self.delay = base_url.rstrip("/"), timeout, delay
         self._last_request = 0.0
         self.random_delay_enabled = random_delay_enabled
         self.random_delay_max_seconds = random_delay_max_seconds
+        self.proxy = proxy
 
     @property
     def source(self):
@@ -231,7 +238,7 @@ class WantedJobSourceAdapter(JobSourcePort):
         if pause > 0:
             await asyncio.sleep(pause)
         async with httpx.AsyncClient(
-            timeout=self.timeout, headers={"User-Agent": "job-collector/0.1"}
+            **_client_options(self), timeout=self.timeout, headers={"User-Agent": "job-collector/0.1"}
         ) as client:
             response = await client.get(url, params=params)
             self._last_request = asyncio.get_running_loop().time()
@@ -269,11 +276,12 @@ class WantedJobSourceAdapter(JobSourcePort):
 class JobKoreaJobSourceAdapter(JobSourcePort):
     """Public JobKorea search/detail pages, with conservative request pacing."""
 
-    def __init__(self, base_url: str, timeout: float = 20, delay: float = 1.5, random_delay_enabled: bool = False, random_delay_max_seconds: float = 0.0):
+    def __init__(self, base_url: str, timeout: float = 20, delay: float = 1.5, random_delay_enabled: bool = False, random_delay_max_seconds: float = 0.0, proxy: str | None = None):
         self.base_url, self.timeout, self.delay = base_url.rstrip("/"), timeout, delay
         self._last_request = 0.0
         self.random_delay_enabled = random_delay_enabled
         self.random_delay_max_seconds = random_delay_max_seconds
+        self.proxy = proxy
 
     @property
     def source(self):
@@ -288,7 +296,7 @@ class JobKoreaJobSourceAdapter(JobSourcePort):
         if pause > 0:
             await asyncio.sleep(pause)
         async with httpx.AsyncClient(
-            timeout=self.timeout,
+            **_client_options(self), timeout=self.timeout,
             headers={"User-Agent": "job-collector/0.1 (+public-page-collector)"},
             follow_redirects=True,
         ) as client:
@@ -328,11 +336,12 @@ class JobKoreaJobSourceAdapter(JobSourcePort):
 class SaraminPublicJobSourceAdapter(JobSourcePort):
     """Public Saramin search/detail pages; no API key or private endpoint is used."""
 
-    def __init__(self, base_url: str, timeout: float = 20, delay: float = 1.5, random_delay_enabled: bool = False, random_delay_max_seconds: float = 0.0):
+    def __init__(self, base_url: str, timeout: float = 20, delay: float = 1.5, random_delay_enabled: bool = False, random_delay_max_seconds: float = 0.0, proxy: str | None = None):
         self.base_url, self.timeout, self.delay = base_url.rstrip("/"), timeout, delay
         self._last_request = 0.0
         self.random_delay_enabled = random_delay_enabled
         self.random_delay_max_seconds = random_delay_max_seconds
+        self.proxy = proxy
         self._search_metadata: dict[str, str] = {}
 
     @property
@@ -348,7 +357,7 @@ class SaraminPublicJobSourceAdapter(JobSourcePort):
         if pause > 0:
             await asyncio.sleep(pause)
         async with httpx.AsyncClient(
-            timeout=self.timeout,
+            **_client_options(self), timeout=self.timeout,
             headers={"User-Agent": "job-collector/0.1 (+public-page-collector)"},
             follow_redirects=True,
         ) as client:
@@ -511,11 +520,13 @@ class SaraminJobSourceAdapter(JobSourcePort):
         delay: float = 0.2,
         random_delay_enabled: bool = False,
         random_delay_max_seconds: float = 0.0,
+        proxy: str | None = None,
         base_url: str = "https://oapi.saramin.co.kr",
     ):
         self.access_key, self.timeout, self.delay = access_key, timeout, delay
         self.random_delay_enabled = random_delay_enabled
         self.random_delay_max_seconds = random_delay_max_seconds
+        self.proxy = proxy
         self.base_url, self._last_request = base_url.rstrip("/"), 0.0
 
     @property
@@ -536,7 +547,7 @@ class SaraminJobSourceAdapter(JobSourcePort):
             **params,
         }
         async with httpx.AsyncClient(
-            timeout=self.timeout, headers={"Accept": "application/json"}
+            **_client_options(self), timeout=self.timeout, headers={"Accept": "application/json"}
         ) as client:
             response = await client.get(f"{self.base_url}/job-search", params=request_params)
             self._last_request = asyncio.get_running_loop().time()
