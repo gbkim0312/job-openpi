@@ -157,12 +157,41 @@ def parse_wanted_detail(
         and not element.has_attr("disabled")
         for element in soup.find_all(("a", "button"))
     )
+    address = next_data.get("address") if isinstance(next_data.get("address"), dict) else {}
+    raw_location = (
+        " ".join(
+            str(address.get(key, "")).strip()
+            for key in ("location", "district")
+            if address.get(key)
+        )
+        or None
+    )
+    career = next_data.get("career") if isinstance(next_data.get("career"), dict) else {}
+    career_from, career_to = career.get("annual_from"), career.get("annual_to")
+    if career.get("is_newbie") and not career_from:
+        raw_experience = "신입"
+    elif career_from is not None:
+        raw_experience = f"경력 {career_from}" + (
+            f"~{career_to}년" if career_to and career_to < 100 else "년"
+        )
+    else:
+        raw_experience = None
+    employment = {"regular": "정규직", "contract": "계약직", "intern": "인턴"}.get(
+        str(next_data.get("employment_type") or "").lower(),
+        str(next_data.get("employment_type") or "") or None,
+    )
+    due_time = next_data.get("due_time")
+    raw_deadline = str(due_time) if due_time else ("상시채용" if due_time is None else None)
     return SourceJobPosting(
         reference.source,
         reference.source_job_id,
         reference.url,
         title,
         company,
+        raw_location=raw_location,
+        raw_experience=raw_experience,
+        raw_employment_type=employment,
+        raw_deadline=raw_deadline,
         raw_status="채용 마감" if closed else source_status or None,
         responsibilities=_text_list(soup, "주요업무"),
         requirements=_text_list(soup, "자격요건"),

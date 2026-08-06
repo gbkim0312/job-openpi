@@ -3,13 +3,14 @@ from __future__ import annotations
 import hmac
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
+from typing import Literal
 from uuid import UUID
 
 from apscheduler.triggers.cron import CronTrigger
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import and_, delete, func, or_, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -44,6 +45,10 @@ class ScheduleRequest(BaseModel):
     recheck_cron: str
 
 
+class DeleteAllJobsRequest(BaseModel):
+    confirm: Literal["DELETE_ALL"]
+
+
 def row_dict(row: JobPostingRow, detail: bool = False) -> dict:
     value = {
         "id": str(row.id),
@@ -55,8 +60,10 @@ def row_dict(row: JobPostingRow, detail: bool = False) -> dict:
         "detected_status": row.detected_status,
         "region": row.region,
         "location_raw": row.location_raw,
+        "employment_type": row.employment_type,
         "experience": {
             "raw": row.experience_raw,
+            "type": row.experience_type,
             "min_years": row.min_experience_years,
             "max_years": row.max_experience_years,
         },
@@ -164,6 +171,8 @@ def create_app() -> FastAPI:
         categories: str | None = None,
         skills: str | None = None,
         region: str | None = None,
+        employment_types: str | None = None,
+        experience_types: str | None = None,
         min_experience: int | None = None,
         max_experience: int | None = None,
         limit: int = Query(20, ge=1, le=100),
@@ -181,6 +190,10 @@ def create_app() -> FastAPI:
             clauses.append(JobPostingRow.source.in_(sources.split(",")))
         if region:
             clauses.append(JobPostingRow.region == region)
+        if employment_types:
+            clauses.append(JobPostingRow.employment_type.in_(employment_types.split(",")))
+        if experience_types:
+            clauses.append(JobPostingRow.experience_type.in_(experience_types.split(",")))
         if keyword:
             clauses.append(
                 or_(
@@ -387,6 +400,13 @@ def create_app() -> FastAPI:
         await session.delete(row)
         await session.commit()
         profiles.remove(profile_id)
+
+    @app.delete("/api/v1/admin/jobs", dependencies=[Depends(admin)])
+    async def delete_all_jobs(payload: DeleteAllJobsRequest, session: AsyncSession = Depends(db)):
+        snapshots = (await session.execute(delete(JobSnapshotRow))).rowcount or 0
+        jobs = (await session.execute(delete(JobPostingRow))).rowcount or 0
+        await session.commit()
+        return {"status": "DELETED", "deleted_jobs": jobs, "deleted_snapshots": snapshots}
 
     @app.post("/api/v1/admin/profiles/reload", dependencies=[Depends(admin)])
     async def reload_profiles(session: AsyncSession = Depends(db)):

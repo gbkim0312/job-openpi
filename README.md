@@ -83,7 +83,7 @@ curl http://localhost:8000/ready
 | `GET` | `/api/v1/jobs/{job_id}/snapshots` | 저장된 스냅샷 |
 | `GET` | `/api/v1/jobs/{job_id}/changes` | 변경 이력 |
 
-목록 필터: `keyword`, `sources`, `statuses`, `categories`, `skills`, `region`, `min_experience`, `max_experience`, `limit`(1–100), `cursor`, `sort`(`first_seen_at:asc|desc`, `updated_at:asc|desc`)를 지원합니다.
+목록 필터: `keyword`, `sources`, `statuses`, `categories`, `skills`, `region`, `employment_types`, `experience_types`, `min_experience`, `max_experience`, `limit`(1–100), `cursor`, `sort`(`first_seen_at:asc|desc`, `updated_at:asc|desc`)를 지원합니다. `experience_types`는 `NEWBIE`, `EXPERIENCED`, `ANY`, `UNKNOWN` 값을 사용합니다.
 
 ```sh
 curl -G http://localhost:8000/api/v1/jobs \
@@ -133,6 +133,7 @@ curl -G http://localhost:8000/api/v1/jobs \
 | `POST` | `/api/v1/admin/profiles/reload` | YAML 프로필 다시 로드 |
 | `GET` | `/api/v1/admin/crawl-runs` | 최근 수집 실행 목록 |
 | `GET` | `/api/v1/admin/crawl-runs/{run_id}` | 수집 실행 상세 |
+| `DELETE` | `/api/v1/admin/jobs` | 공고·변경 이력 전체 삭제 (확인 문자열 필요) |
 
 동기화 본문은 선택적 프로필과 모드를 받습니다. 현재 지원 모드는 `incremental`입니다.
 
@@ -147,6 +148,12 @@ curl -X POST http://localhost:8000/api/v1/admin/sync \
 
 ```json
 {"run_ids":["uuid"],"status":"COMPLETED"}
+```
+
+전체 삭제는 다음 본문이 정확히 일치할 때만 실행됩니다. 수집 실행 이력과 프로필은 삭제하지 않습니다.
+
+```json
+{"confirm":"DELETE_ALL"}
 ```
 
 수집 과정에서 출처 하나 또는 일부 공고가 실패해도 성공한 결과는 저장되며 실행 상태는 `PARTIAL_SUCCESS`가 됩니다. 검색 목록에서 사라진 사실만으로 공고를 마감 처리하지 않습니다.

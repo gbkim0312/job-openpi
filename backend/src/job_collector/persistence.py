@@ -47,6 +47,7 @@ class JobPostingRow(Base):
     region: Mapped[str | None] = mapped_column(String(100), nullable=True)
     city: Mapped[str | None] = mapped_column(String(100), nullable=True)
     experience_raw: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    experience_type: Mapped[str] = mapped_column(String(20), default="UNKNOWN", index=True)
     min_experience_years: Mapped[int | None] = mapped_column(Integer, nullable=True)
     max_experience_years: Mapped[int | None] = mapped_column(Integer, nullable=True)
     employment_type: Mapped[str | None] = mapped_column(String(100), nullable=True)

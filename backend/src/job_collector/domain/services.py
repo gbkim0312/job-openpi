@@ -38,6 +38,24 @@ def parse_experience(raw: str | None) -> tuple[int | None, int | None]:
     return (numbers[0], numbers[1]) if len(numbers) > 1 else (numbers[0], None)
 
 
+def classify_experience(raw: str | None, minimum: int | None) -> str:
+    value = (raw or "").lower()
+    if "신입" in value and "경력" not in value:
+        return "NEWBIE"
+    if "신입" in value and "경력" in value:
+        return "ANY"
+    if "경력" in value or minimum is not None:
+        return "EXPERIENCED"
+    return "UNKNOWN"
+
+
+def parse_location(raw: str | None) -> tuple[str | None, str | None]:
+    if not raw:
+        return None, None
+    parts = raw.replace(",", " ").split()
+    return (parts[0] if parts else None, parts[1] if len(parts) > 1 else None)
+
+
 def parse_deadline(raw: str | None) -> tuple[date | None, bool]:
     if not raw:
         return None, False
@@ -78,6 +96,8 @@ def normalize(
         source_job.raw_status, deadline, always_open, has_apply_action, today
     )
     min_years, max_years = parse_experience(source_job.raw_experience)
+    experience_type = classify_experience(source_job.raw_experience, min_years)
+    region, city = parse_location(source_job.raw_location)
     categories = classify(
         source_job.raw_title,
         source_job.raw_company,
@@ -94,7 +114,10 @@ def normalize(
         "source_status": source_job.raw_status,
         "status_reason": reason,
         "location_raw": source_job.raw_location,
+        "region": region,
+        "city": city,
         "experience_raw": source_job.raw_experience,
+        "experience_type": experience_type,
         "min_experience_years": min_years,
         "max_experience_years": max_years,
         "employment_type": source_job.raw_employment_type,
