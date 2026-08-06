@@ -720,6 +720,39 @@ def create_app() -> FastAPI:
                 select(CrawlRunRow).order_by(CrawlRunRow.started_at.desc()).limit(1)
             )
         ).scalar_one_or_none()
+        grouped = await session.execute(
+            select(JobPostingRow.source, JobPostingRow.detected_status, func.count())
+            .group_by(JobPostingRow.source, JobPostingRow.detected_status)
+        )
+        source_counts: dict[str, dict[str, int]] = {}
+        for source, status, count in grouped:
+            source_counts.setdefault(source, {}).update({status.lower(): count})
+        recent_runs = (
+            await session.execute(
+                select(CrawlRunRow).order_by(CrawlRunRow.started_at.desc()).limit(200)
+            )
+        ).scalars()
+        latest_by_source: dict[str, CrawlRunRow] = {}
+        for run in recent_runs:
+            latest_by_source.setdefault(run.source, run)
+        source_names = ("WANTED", "SARAMIN", "JOBKOREA", "SAMSUNG", "LG", "HYUNDAI")
+        source_details = []
+        for source in source_names:
+            values = source_counts.get(source, {})
+            run = latest_by_source.get(source)
+            source_details.append(
+                {
+                    "source": source,
+                    "enabled": source in adapters,
+                    "total": sum(values.values()),
+                    "active": values.get("active", 0),
+                    "closed": values.get("closed", 0),
+                    "unknown": values.get("unknown", 0),
+                    "last_started_at": run.started_at if run else None,
+                    "last_finished_at": run.finished_at if run else None,
+                    "last_status": run.status if run else None,
+                }
+            )
         return {
             "jobs": {
                 "total": total,
@@ -727,7 +760,12 @@ def create_app() -> FastAPI:
                 "new_last_7_days": new,
                 "closed_last_7_days": 0,
             },
-            "sources": {"enabled": len(adapters), "healthy": len(adapters), "failed": 0},
+            "sources": {
+                "enabled": len(adapters),
+                "healthy": len(adapters),
+                "failed": 0,
+                "items": source_details,
+            },
             "crawl": {
                 "last_started_at": last.started_at if last else None,
                 "last_finished_at": last.finished_at if last else None,

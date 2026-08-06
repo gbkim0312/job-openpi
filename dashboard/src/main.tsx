@@ -41,6 +41,10 @@ function deadlineLabel(deadline: any) {
   const days = Math.ceil((new Date(`${deadline.date}T23:59:59`).getTime() - Date.now()) / 86400000);
   return days < 0 ? "마감" : `D-${days} (${deadline.date})`;
 }
+function dateTimeLabel(value: string | null | undefined) {
+  if (!value) return "-";
+  return new Date(value).toLocaleString("ko-KR", { dateStyle: "short", timeStyle: "short" });
+}
 function Header() {
   return (
     <header>
@@ -63,6 +67,7 @@ function Overview() {
   });
   if (error) return <p>API 연결 오류</p>;
   const j = data?.jobs;
+  const sources = data?.sources?.items || [];
   return (
     <>
       <h1>개요</h1>
@@ -79,6 +84,38 @@ function Overview() {
           </article>
         ))}
       </section>
+      <section className="settings-card">
+        <h2>출처별 현황</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>출처</th>
+              <th>수집 공고</th>
+              <th>활성</th>
+              <th>마감</th>
+              <th>UNKNOWN</th>
+              <th>최근 동기화</th>
+              <th>상태</th>
+            </tr>
+          </thead>
+          <tbody>
+            {sources.map((source: any) => (
+              <tr key={source.source}>
+                <td>{source.source}</td>
+                <td>{source.total}</td>
+                <td>{source.active}</td>
+                <td>{source.closed}</td>
+                <td>{source.unknown}</td>
+                <td>{dateTimeLabel(source.last_finished_at || source.last_started_at)}</td>
+                <td>{source.enabled ? source.last_status || "대기" : "비활성"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </section>
+      <p>
+        마지막 전체 동기화: {dateTimeLabel(data?.crawl?.last_finished_at || data?.crawl?.last_started_at)}
+      </p>
     </>
   );
 }
