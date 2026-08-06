@@ -13,19 +13,28 @@ class SyncService:
     def __init__(self, sessions, adapters, profiles):
         self.sessions, self.adapters, self.profiles = sessions, adapters, profiles
 
-    async def sync(self, source: str, profile_id: str) -> CrawlRunRow:
+    async def sync(
+        self, source: str, profile_id: str, profile_ids: list[str] | None = None
+    ) -> CrawlRunRow:
         adapter = self.adapters[source]
-        profile = self.profiles.get(profile_id)
+        selected_ids = profile_ids or [profile_id]
+        selected_profiles = [self.profiles.get(item) for item in selected_ids]
+        run_profile_id = "ALL_PROFILES" if len(selected_profiles) > 1 else profile_id
         async with self.sessions() as session:
-            run = CrawlRunRow(source=source, profile_id=profile_id, status="RUNNING")
+            run = CrawlRunRow(source=source, profile_id=run_profile_id, status="RUNNING")
             session.add(run)
             await session.commit()
             try:
                 refs = []
-                queries = [""] if getattr(adapter, "profile_independent", False) else (
-                    profile.source_queries.get(source, profile.queries)
-                    + profile.company_queries.get(source, [])
-                )
+                if getattr(adapter, "profile_independent", False):
+                    queries = [""]
+                else:
+                    queries = []
+                    for profile in selected_profiles:
+                        queries.extend(profile.source_queries.get(source, profile.queries))
+                        queries.extend(profile.company_queries.get(source, []))
+                    # Preserve profile order while avoiding duplicate requests.
+                    queries = list(dict.fromkeys(queries))
                 for query in queries:
                     refs.extend(await adapter.search(SourceSearchQuery(query=query)))
                 unique = {r.source_job_id: r for r in refs}

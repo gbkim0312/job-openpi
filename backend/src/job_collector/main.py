@@ -15,8 +15,15 @@ async def run_scheduler() -> None:
         scheduler = AsyncIOScheduler(timezone=app.state.settings.timezone)
 
         async def sync_all() -> None:
+            profile_ids = list(app.state.profiles.items)
+            if not profile_ids:
+                return
             for source in app.state.sync.adapters:
-                await app.state.sync.sync(source, app.state.settings.default_profile)
+                await app.state.sync.sync(
+                    source,
+                    profile_ids[0],
+                    profile_ids=profile_ids,
+                )
 
         async def recheck_all() -> None:
             # A source refresh confirms current records and turns postings absent
