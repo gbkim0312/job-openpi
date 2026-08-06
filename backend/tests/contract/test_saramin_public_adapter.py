@@ -17,3 +17,15 @@ def test_saramin_public_detail_parser():
     assert posting.raw_company == "테스트회사"
     assert posting.raw_experience == "경력 3년"
     assert posting.raw_deadline == "2026-08-31"
+
+
+def test_saramin_public_detail_ignores_title_words_before_metadata():
+    adapter = SaraminPublicJobSourceAdapter("https://www.saramin.co.kr")
+    reference = SourceJobReference(adapter.source, "456", "https://www.saramin.co.kr/zf_user/jobs/relay/view?rec_idx=456")
+    posting = parse_saramin_public_detail(
+        '<meta property="og:title" content="[회사] 경력 채용 공고 - 사람인">'
+        '<meta name="description" content="회사, 경력 채용 공고, 경력:신입/경력, 학력:무관, 마감일:2026-08-31">',
+        reference,
+        datetime.now(UTC),
+    )
+    assert posting.raw_experience == "신입/경력"

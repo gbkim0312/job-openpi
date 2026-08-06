@@ -218,8 +218,10 @@ def parse_saramin_public_detail(
         title = heading.get_text(" ", strip=True) if heading else ""
     if not title:
         raise SourceParseError("Saramin public job title unavailable")
-    deadline_match = re.search(r"마감일\s*:?\s*(\d{4}[-.]\d{1,2}[-.]\d{1,2})", summary)
-    experience_match = re.search(r"경력\s*:?\s*([^,]+)", summary)
+    deadline_match = re.search(
+        r"(?:^|,\s*)마감일\s*:\s*(\d{4}[-.]\d{1,2}[-.]\d{1,2})", summary
+    )
+    experience_match = re.search(r"(?:^|,\s*)경력\s*:\s*([^,]+)", summary)
     raw_text = soup.get_text(" ", strip=True)
     closed = any(marker in raw_text for marker in ("채용 마감", "접수 마감", "모집 마감"))
     return SourceJobPosting(
