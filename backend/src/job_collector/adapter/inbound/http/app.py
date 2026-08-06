@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import hmac
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
@@ -7,7 +8,7 @@ from typing import Literal
 from uuid import UUID
 
 from apscheduler.triggers.cron import CronTrigger
-from fastapi import Depends, FastAPI, HTTPException, Query, Request
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sqlalchemy import and_, delete, func, or_, select
@@ -131,6 +132,7 @@ def create_app() -> FastAPI:
             settings.jobkorea_request_delay_seconds,
         )
     sync_service = SyncService(sessions, adapters, profiles)
+    sync_lock = asyncio.Lock()
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -363,27 +365,49 @@ def create_app() -> FastAPI:
         }
 
     @app.post("/api/v1/admin/sync", dependencies=[Depends(admin)], status_code=202)
-    async def sync_all(payload: SyncRequest):
+    async def sync_all(payload: SyncRequest, background_tasks: BackgroundTasks):
         profile_id = payload.profile or settings.default_profile
         if profile_id not in profiles.items:
             raise HTTPException(404, "profile not found")
-        runs = [await sync_service.sync(source, profile_id) for source in adapters]
-        return {"run_ids": [str(x.id) for x in runs], "status": "COMPLETED"}
+
+        async def execute() -> None:
+            if sync_lock.locked():
+                return
+            async with sync_lock:
+                for source in adapters:
+                    await sync_service.sync(source, profile_id)
+
+        background_tasks.add_task(execute)
+        return {"status": "QUEUED", "message": "동기화가 백그라운드에서 시작됩니다."}
 
     @app.post("/api/v1/admin/sources/{source}/sync", dependencies=[Depends(admin)], status_code=202)
-    async def sync_source(source: str, payload: SyncRequest):
+    async def sync_source(
+        source: str, payload: SyncRequest, background_tasks: BackgroundTasks
+    ):
         source = source.upper()
         if source not in adapters:
             raise HTTPException(400, "source unavailable")
-        run = await sync_service.sync(source, payload.profile or settings.default_profile)
-        return {"run_ids": [str(run.id)], "status": run.status}
+        profile_id = payload.profile or settings.default_profile
+        if profile_id not in profiles.items:
+            raise HTTPException(404, "profile not found")
+
+        async def execute() -> None:
+            if sync_lock.locked():
+                return
+            async with sync_lock:
+                await sync_service.sync(source, profile_id)
+
+        background_tasks.add_task(execute)
+        return {"status": "QUEUED", "message": f"{source} 동기화가 백그라운드에서 시작됩니다."}
 
     @app.post(
         "/api/v1/admin/sources/{source}/recheck", dependencies=[Depends(admin)], status_code=202
     )
-    async def recheck_source(source: str, payload: SyncRequest):
+    async def recheck_source(
+        source: str, payload: SyncRequest, background_tasks: BackgroundTasks
+    ):
         """Queue a source refresh; a source never changes status merely because search missed it."""
-        return await sync_source(source, payload)
+        return await sync_source(source, payload, background_tasks)
 
     @app.post("/api/v1/admin/jobs/{job_id}/recheck", dependencies=[Depends(admin)])
     async def recheck_job(job_id: UUID, session: AsyncSession = Depends(db)):
