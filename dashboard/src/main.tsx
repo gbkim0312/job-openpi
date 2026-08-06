@@ -136,7 +136,7 @@ function Jobs() {
           <option value="">출처 전체</option>
           <option value="WANTED">WANTED</option>
           <option value="SARAMIN">SARAMIN</option>
-          <option value="JOBKOREA">JOBKOREA</option>
+          <option value="JOBKOREA">JOBKOREA</option><option value="SAMSUNG">SAMSUNG</option><option value="LG">LG</option><option value="HYUNDAI">HYUNDAI</option>
         </select>
         <input
           placeholder="지역 (예: 경기)"
@@ -433,6 +433,27 @@ const endpoints: ApiEndpoint[] = [
     name: "잡코리아 동기화",
     method: "POST",
     path: "/v1/admin/sources/JOBKOREA/sync",
+    body: '{\n  "profile": "mobility_sdv_security_cpp",\n  "mode": "incremental"\n}',
+    admin: true,
+  },
+  {
+    name: "삼성 Careers 동기화",
+    method: "POST",
+    path: "/v1/admin/sources/SAMSUNG/sync",
+    body: '{\n  "profile": "mobility_sdv_security_cpp",\n  "mode": "incremental"\n}',
+    admin: true,
+  },
+  {
+    name: "LG Careers 동기화",
+    method: "POST",
+    path: "/v1/admin/sources/LG/sync",
+    body: '{\n  "profile": "mobility_sdv_security_cpp",\n  "mode": "incremental"\n}',
+    admin: true,
+  },
+  {
+    name: "현대 Careers 동기화",
+    method: "POST",
+    path: "/v1/admin/sources/HYUNDAI/sync",
     body: '{\n  "profile": "mobility_sdv_security_cpp",\n  "mode": "incremental"\n}',
     admin: true,
   },

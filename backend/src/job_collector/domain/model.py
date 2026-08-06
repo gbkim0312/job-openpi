@@ -9,6 +9,9 @@ class JobSource(StrEnum):
     WANTED = "WANTED"
     SARAMIN = "SARAMIN"
     JOBKOREA = "JOBKOREA"
+    SAMSUNG = "SAMSUNG"
+    LG = "LG"
+    HYUNDAI = "HYUNDAI"
 
 
 class JobStatus(StrEnum):

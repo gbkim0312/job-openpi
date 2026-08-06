@@ -6,7 +6,7 @@ import re
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from datetime import UTC, datetime
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlsplit
 
 import httpx
 from bs4 import BeautifulSoup
@@ -43,6 +43,74 @@ class JobSourcePort(ABC):
     async def search(self, query: SourceSearchQuery) -> Sequence[SourceJobReference]: ...
     @abstractmethod
     async def fetch_detail(self, reference: SourceJobReference) -> SourceJobPosting: ...
+
+
+class CorporateCareerSourceAdapter(JobSourcePort):
+    """Conservative adapter for public corporate career listing/detail pages."""
+
+    def __init__(self, source: JobSource, listing_url: str, timeout: float = 20, delay: float = 1.5):
+        self._source, self.listing_url = source, listing_url
+        self.base_url, self.timeout, self.delay = f"{urlsplit(listing_url).scheme}://{urlsplit(listing_url).netloc}", timeout, delay
+        self._last_request = 0.0
+
+    @property
+    def source(self):
+        return self._source
+
+    @property
+    def capabilities(self):
+        return SourceCapabilities(True, True, True, True, True)
+
+    async def _get(self, url: str) -> str:
+        pause = self.delay - (asyncio.get_running_loop().time() - self._last_request)
+        if pause > 0:
+            await asyncio.sleep(pause)
+        async with httpx.AsyncClient(timeout=self.timeout, follow_redirects=True, headers={"User-Agent": "job-collector/0.1 (+public-page-collector)"}) as client:
+            response = await client.get(url)
+            self._last_request = asyncio.get_running_loop().time()
+        if response.status_code == 404:
+            raise SourceNotFoundError(url)
+        response.raise_for_status()
+        return response.text
+
+    async def search(self, query: SourceSearchQuery) -> Sequence[SourceJobReference]:
+        soup = BeautifulSoup(await self._get(self.listing_url), "lxml")
+        refs: dict[str, SourceJobReference] = {}
+        for anchor in soup.select("a[href]"):
+            href = str(anchor.get("href") or "")
+            absolute = urljoin(self.base_url, href)
+            if urlsplit(absolute).netloc != urlsplit(self.base_url).netloc:
+                continue
+            text = anchor.get_text(" ", strip=True)
+            if len(text) < 4 or not any(token in absolute.lower() for token in ("apply", "job", "recruit", "detail", "view")):
+                continue
+            job_id = re.search(r"(?:id|seq|no|jobId|recuNo)[=/_-]([A-Za-z0-9-]+)", absolute, re.IGNORECASE)
+            key = job_id.group(1) if job_id else absolute
+            refs[key] = SourceJobReference(self.source, key, absolute)
+        return list(refs.values())[: query.page_size]
+
+    async def fetch_detail(self, reference: SourceJobReference) -> SourceJobPosting:
+        soup = BeautifulSoup(await self._get(reference.url), "lxml")
+        title = company = None
+        for script in soup.select('script[type="application/ld+json"]'):
+            try:
+                value = json.loads(script.string or "")
+            except json.JSONDecodeError:
+                continue
+            values = value if isinstance(value, list) else [value]
+            job = next((x for x in values if isinstance(x, dict) and x.get("@type") == "JobPosting"), None)
+            if job:
+                title = str(job.get("title") or "") or title
+                org = job.get("hiringOrganization")
+                company = org.get("name") if isinstance(org, dict) else company
+        meta_title = soup.select_one('meta[property="og:title"]')
+        title = title or (meta_title.get("content", "") if meta_title else "") or (soup.select_one("h1").get_text(" ", strip=True) if soup.select_one("h1") else "")
+        if not title:
+            raise SourceParseError(f"{self.source} career title unavailable")
+        writer = soup.select_one('meta[name="author"], meta[name="writer"]')
+        company = company or (writer.get("content") if writer else None)
+        raw = soup.get_text(" ", strip=True)
+        return SourceJobPosting(self.source, reference.source_job_id, reference.url, title, company, raw_status="closed" if any(x in raw for x in ("채용 마감", "접수 마감", "마감된 공고")) else "active", fetched_at=datetime.now(UTC), raw_payload={"has_apply_action": True})
 
 
 class WantedJobSourceAdapter(JobSourcePort):

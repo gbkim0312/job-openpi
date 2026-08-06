@@ -16,7 +16,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ....bootstrap import Settings
-from ....domain.model import JobChangeType, SourceJobReference
+from ....domain.model import JobChangeType, JobSource, SourceJobReference
 from ....domain.services import content_hash, json_safe, normalize
 from ....persistence import (
     Base,
@@ -35,6 +35,7 @@ from ....runtime_settings import (
     seed_schedule_settings,
 )
 from ....sources import (
+    CorporateCareerSourceAdapter,
     JobKoreaJobSourceAdapter,
     SaraminJobSourceAdapter,
     SaraminPublicJobSourceAdapter,
@@ -131,6 +132,14 @@ def create_app() -> FastAPI:
             settings.http_timeout_seconds,
             settings.jobkorea_request_delay_seconds,
         )
+    corporate_sites = {
+        "SAMSUNG": (settings.samsung_enabled, "https://www.samsungcareers.com/"),
+        "LG": (settings.lg_enabled, "https://careers.lg.com/apply"),
+        "HYUNDAI": (settings.hyundai_enabled, "https://talent.hyundai.com/apply/applyList.hc"),
+    }
+    for source, (enabled, listing_url) in corporate_sites.items():
+        if enabled:
+            adapters[source] = CorporateCareerSourceAdapter(JobSource(source), listing_url, settings.http_timeout_seconds)
     sync_service = SyncService(sessions, adapters, profiles)
     sync_lock = asyncio.Lock()
 
@@ -361,6 +370,22 @@ def create_app() -> FastAPI:
                         "posted_date": True, "deadline": True,
                     },
                 },
+                *[
+                    {
+                        "source": source,
+                        "enabled": source in adapters,
+                        "status": "HEALTHY" if source in adapters else "DISABLED",
+                        "disabled_reason": "adapter is not enabled" if source not in adapters else None,
+                        "capabilities": {
+                            "keyword_search": True,
+                            "incremental_sync": True,
+                            "status_check": True,
+                            "posted_date": True,
+                            "deadline": True,
+                        },
+                    }
+                    for source in ("SAMSUNG", "LG", "HYUNDAI")
+                ],
             ]
         }
 

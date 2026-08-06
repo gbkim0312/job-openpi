@@ -93,6 +93,8 @@ curl http://localhost:8000/ready
 
 잡코리아는 `JOBKOREA_ENABLED=true`로 공개 검색/상세 페이지 수집을 활성화할 수 있습니다. 공개 HTML과 JSON-LD에 노출된 정보만 사용하며, 요청 간격은 `JOBKOREA_REQUEST_DELAY_SECONDS`로 조정합니다. 사이트 정책 변경이나 접근 제한 시 해당 공고만 실패 처리될 수 있습니다.
 
+삼성·LG·현대 공식 채용 사이트도 공개 페이지 어댑터로 지원합니다. 각각 `SAMSUNG_ENABLED`, `LG_ENABLED`, `HYUNDAI_ENABLED`를 `true`로 설정하면 활성화됩니다. 상세 페이지 구조 변경이나 접근 제한은 개별 실패로 기록하며, 로그인·캡차·비공개 API 우회는 수행하지 않습니다.
+
 ```sh
 curl -G http://localhost:8000/api/v1/jobs \
   --data-urlencode 'statuses=ACTIVE' \
