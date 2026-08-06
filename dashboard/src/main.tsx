@@ -90,12 +90,14 @@ function Jobs() {
   const [employment, setEmployment] = useState("");
   const [minYears, setMinYears] = useState("");
   const [includeUnknown, setIncludeUnknown] = useState(false);
+  const [sortField, setSortField] = useState("deadline_date");
+  const [sortDirection, setSortDirection] = useState("asc");
   const [cursor, setCursor] = useState("");
   const params = new URLSearchParams({
     statuses: "ACTIVE,CLOSED,UNKNOWN,DELETED",
     keyword: q,
     limit: "100",
-    sort: "deadline_date:asc",
+    sort: `${sortField}:${sortDirection}`,
   });
   if (source) params.set("sources", source);
   if (region) params.set("region", region);
@@ -119,6 +121,8 @@ function Jobs() {
       employment,
       minYears,
       includeUnknown,
+      sortField,
+      sortDirection,
       cursor,
     ],
     queryFn: () => get(`/v1/jobs?${params}`),
@@ -168,6 +172,21 @@ function Jobs() {
           value={minYears}
           onChange={reset(setMinYears)}
         />
+        <select value={sortField} onChange={reset(setSortField)}>
+          <option value="deadline_date">마감일순</option>
+          <option value="company_name">회사명순</option>
+          <option value="title">포지션순</option>
+          <option value="source">출처순</option>
+          <option value="region">지역순</option>
+          <option value="experience">경력순</option>
+          <option value="employment_type">고용 형태순</option>
+          <option value="updated_at">업데이트순</option>
+          <option value="first_seen_at">등록순</option>
+        </select>
+        <select value={sortDirection} onChange={reset(setSortDirection)}>
+          <option value="asc">오름차순</option>
+          <option value="desc">내림차순</option>
+        </select>
       </section>
       <div className="job-options">
         <label>

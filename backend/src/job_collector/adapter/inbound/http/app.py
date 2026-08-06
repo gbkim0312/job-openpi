@@ -255,26 +255,50 @@ def create_app() -> FastAPI:
             if raw:
                 for item in raw.split(","):
                     clauses.append(field.contains([item]))
-        if sort.startswith("deadline_date"):
-            column = JobPostingRow.deadline_date
-        elif sort.startswith("updated_at"):
-            column = JobPostingRow.updated_at
-        else:
-            column = JobPostingRow.first_seen_at
-        ascending = sort.endswith(":asc")
+        sort_columns = {
+            "deadline_date": JobPostingRow.deadline_date,
+            "company_name": JobPostingRow.company_name,
+            "title": JobPostingRow.title,
+            "source": JobPostingRow.source,
+            "region": JobPostingRow.region,
+            "experience": JobPostingRow.min_experience_years,
+            "employment_type": JobPostingRow.employment_type,
+            "updated_at": JobPostingRow.updated_at,
+            "first_seen_at": JobPostingRow.first_seen_at,
+        }
+        sort_name, _, sort_order = sort.partition(":")
+        column = sort_columns.get(sort_name)
+        if column is None:
+            raise HTTPException(400, f"unsupported sort field: {sort_name}")
+        ascending = sort_order != "desc"
         direction = (column.asc() if ascending else column.desc()).nulls_last()
         if cursor:
             try:
-                cursor_value = date.fromisoformat(cursor) if sort.startswith("deadline_date") else datetime.fromisoformat(cursor)
+                if sort_name == "deadline_date":
+                    cursor_value = date.fromisoformat(cursor)
+                elif sort_name in {"updated_at", "first_seen_at"}:
+                    cursor_value = datetime.fromisoformat(cursor)
+                elif sort_name == "experience":
+                    cursor_value = int(cursor)
+                else:
+                    cursor_value = cursor
                 clauses.append(column < cursor_value if ascending else column > cursor_value)
             except ValueError:
                 raise HTTPException(400, "invalid cursor")
+        order_columns = [direction]
+        # Keep pagination deterministic and make company name the common
+        # ascending tie-breaker for every sort (title breaks company ties).
+        if sort_name == "company_name":
+            order_columns.append(JobPostingRow.title.asc().nulls_last())
+        else:
+            order_columns.append(JobPostingRow.company_name.asc().nulls_last())
+        order_columns.append(JobPostingRow.id)
         rows = (
             (
                 await session.execute(
                     select(JobPostingRow)
                     .where(and_(*clauses))
-                    .order_by(direction, JobPostingRow.id)
+                    .order_by(*order_columns)
                     .limit(limit + 1)
                 )
             )
