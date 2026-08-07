@@ -1,4 +1,5 @@
-from dataclasses import dataclass
+import json
+from dataclasses import dataclass, field
 
 from sqlalchemy import select
 
@@ -9,6 +10,7 @@ from .persistence import RuntimeSettingRow
 class ScheduleSettings:
     sync_cron: str
     recheck_cron: str
+    profile_sync_crons: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -27,13 +29,24 @@ async def seed_schedule_settings(session, sync_cron: str, recheck_cron: str) -> 
 async def load_schedule_settings(session) -> ScheduleSettings:
     rows = (await session.execute(select(RuntimeSettingRow))).scalars()
     values = {row.key: row.value for row in rows}
-    return ScheduleSettings(sync_cron=values["sync_cron"], recheck_cron=values["recheck_cron"])
+    try:
+        profile_sync_crons = json.loads(values.get("profile_sync_crons", "{}"))
+    except json.JSONDecodeError:
+        profile_sync_crons = {}
+    if not isinstance(profile_sync_crons, dict):
+        profile_sync_crons = {}
+    return ScheduleSettings(
+        sync_cron=values["sync_cron"],
+        recheck_cron=values["recheck_cron"],
+        profile_sync_crons={str(k): str(v) for k, v in profile_sync_crons.items()},
+    )
 
 
 async def save_schedule_settings(session, settings: ScheduleSettings) -> None:
     for key, value in {
         "sync_cron": settings.sync_cron,
         "recheck_cron": settings.recheck_cron,
+        "profile_sync_crons": json.dumps(settings.profile_sync_crons, ensure_ascii=False),
     }.items():
         row = await session.get(RuntimeSettingRow, key)
         if row is None:

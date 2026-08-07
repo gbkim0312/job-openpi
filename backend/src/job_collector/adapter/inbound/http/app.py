@@ -59,6 +59,7 @@ class SyncRequest(BaseModel):
 class ScheduleRequest(BaseModel):
     sync_cron: str
     recheck_cron: str
+    profile_sync_crons: dict[str, str] = {}
 
 
 class RequestPacingRequest(BaseModel):
@@ -692,20 +693,36 @@ def create_app() -> FastAPI:
     @app.get("/api/v1/admin/settings/schedule", dependencies=[Depends(admin)])
     async def get_schedule(session: AsyncSession = Depends(db)):
         value = await load_schedule_settings(session)
-        return {"sync_cron": value.sync_cron, "recheck_cron": value.recheck_cron}
+        return {
+            "sync_cron": value.sync_cron,
+            "recheck_cron": value.recheck_cron,
+            "profile_sync_crons": value.profile_sync_crons,
+        }
 
     @app.put("/api/v1/admin/settings/schedule", dependencies=[Depends(admin)])
     async def update_schedule(payload: ScheduleRequest, session: AsyncSession = Depends(db)):
         try:
             CronTrigger.from_crontab(payload.sync_cron)
             CronTrigger.from_crontab(payload.recheck_cron)
+            for profile_id, cron in payload.profile_sync_crons.items():
+                if profile_id not in profiles.items:
+                    raise HTTPException(400, f"profile not found: {profile_id}")
+                CronTrigger.from_crontab(cron)
         except ValueError as exc:
             raise HTTPException(400, "cron must have five valid fields") from exc
         await save_schedule_settings(
             session,
-            ScheduleSettings(sync_cron=payload.sync_cron, recheck_cron=payload.recheck_cron),
+            ScheduleSettings(
+                sync_cron=payload.sync_cron,
+                recheck_cron=payload.recheck_cron,
+                profile_sync_crons=payload.profile_sync_crons,
+            ),
         )
-        return {"sync_cron": payload.sync_cron, "recheck_cron": payload.recheck_cron}
+        return {
+            "sync_cron": payload.sync_cron,
+            "recheck_cron": payload.recheck_cron,
+            "profile_sync_crons": payload.profile_sync_crons,
+        }
 
     @app.get("/api/v1/admin/settings/request-pacing", dependencies=[Depends(admin)])
     async def get_request_pacing(session: AsyncSession = Depends(db)):

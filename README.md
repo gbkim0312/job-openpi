@@ -95,6 +95,8 @@ curl http://localhost:8000/ready
 
 예약 전체 동기화와 프로필을 지정하지 않은 관리자 동기화는 출처별·프로필별로 순차 실행됩니다. 따라서 모든 프로필의 검색 요청이 동시에 몰리지 않습니다. 각 프로필 실행은 별도의 `crawl_runs`로 기록되며, 출처의 모든 프로필 실행이 정상 완료된 뒤에만 전체 결과를 기준으로 미등장 공고를 재분류합니다. 저장된 마감일이 지난 공고는 `CLOSED`, 마감일이 남아 있거나 없는 공고는 기존 DB 상태를 유지합니다. 특정 프로필만 실행할 때는 다른 프로필 공고를 잘못 재분류하지 않습니다.
 
+수집 일정 API의 `profile_sync_crons`에 프로필 ID별 Cron을 지정하면 해당 프로필만 독립된 일정으로 실행됩니다. 예를 들어 `{ "education_content_development": "0 2 * * 0" }`은 해당 프로필을 매주 일요일 02:00에 수집합니다. 지정하지 않은 프로필은 기존 `sync_cron`을 사용하며, 프로필 작업은 동시에 실행되지 않고 순차 처리됩니다.
+
 모든 출처의 기본 요청 간격에 무작위 지연을 추가하려면 `REQUEST_RANDOM_DELAY_ENABLED=true`와 `REQUEST_RANDOM_DELAY_MAX_SECONDS`(기본 0.5초)를 설정합니다. 대시보드 설정에서도 변경할 수 있으며 저장 즉시 실행 중인 어댑터에 반영됩니다.
 
 외부에서 운영 중인 Tor를 선택적으로 사용하려면 `TOR_ENABLED=true`로 설정하고 `TOR_SOCKS_PROXY_URL=socks5://tor:9050`을 사용합니다. ControlPort 수동 회선 변경은 `TOR_CONTROL_ENABLED=true`, `TOR_CONTROL_HOST`, `TOR_CONTROL_PORT`, `TOR_CONTROL_PASSWORD`(해시가 아닌 원문 비밀번호)를 설정한 뒤 대시보드의 **새 Tor 회선 요청** 버튼 또는 `POST /api/v1/admin/tor/newnym`을 사용합니다. Tor의 `TOR_HASHED_CONTROL_PASSWORD`는 Tor 컨테이너에서만 관리하며 이 프로젝트에는 넣지 않습니다. 429/403 발생 시 자동 회선 변경·동일 요청 재전송은 하지 않고 실패 처리합니다.

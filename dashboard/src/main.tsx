@@ -808,6 +808,8 @@ function Settings() {
   const [key, setKey] = useState(sessionStorage.getItem("adminApiKey") || "");
   const [syncCron, setSyncCron] = useState("0 2 * * *");
   const [recheckCron, setRecheckCron] = useState("0 3 * * *");
+  const [profileCrons, setProfileCrons] = useState<Record<string, string>>({});
+  const [profiles, setProfiles] = useState<any[]>([]);
   const [randomDelayEnabled, setRandomDelayEnabled] = useState(false);
   const [randomDelayMax, setRandomDelayMax] = useState("0.5");
   const [confirmText, setConfirmText] = useState("");
@@ -824,6 +826,9 @@ function Settings() {
       const data = await request("/v1/admin/settings/schedule");
       setSyncCron(data.sync_cron);
       setRecheckCron(data.recheck_cron);
+      setProfileCrons(data.profile_sync_crons || {});
+      const profileData = await request("/v1/profiles");
+      setProfiles(profileData.items || []);
       setMessage("현재 일정을 불러왔습니다.");
     } catch (error) {
       setMessage(`일정 조회 실패: ${String(error)}`);
@@ -841,11 +846,15 @@ function Settings() {
   };
   const saveSchedule = async () => {
     try {
+      const configuredProfileCrons = Object.fromEntries(
+        Object.entries(profileCrons).filter(([, cron]) => cron.trim()),
+      );
       await request("/v1/admin/settings/schedule", {
         method: "PUT",
         body: JSON.stringify({
           sync_cron: syncCron,
           recheck_cron: recheckCron,
+          profile_sync_crons: configuredProfileCrons,
         }),
       });
       setMessage(
@@ -973,6 +982,19 @@ function Settings() {
             onChange={(e) => setRecheckCron(e.target.value)}
           />
         </label>
+        <p>프로필별 Cron을 입력하면 해당 프로필은 전체 일정 대신 개별 일정으로 실행됩니다. 비워두면 전체 일정이 적용됩니다. 주 1회 예: <code>0 2 * * 0</code></p>
+        <div className="profile-schedules">
+          {profiles.map((profile) => (
+            <label key={profile.id}>
+              {profile.display_name || profile.id}
+              <input
+                placeholder={syncCron}
+                value={profileCrons[profile.id] || ""}
+                onChange={(e) => setProfileCrons({ ...profileCrons, [profile.id]: e.target.value })}
+              />
+            </label>
+          ))}
+        </div>
         <button onClick={loadSchedule}>현재 일정 불러오기</button>
         <button onClick={saveSchedule}>일정 저장</button>
         <button onClick={syncNow} disabled={syncingNow}>
