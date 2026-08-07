@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 from sqlalchemy import select
 
@@ -30,6 +30,15 @@ def _query_key(query: str) -> str:
     return " ".join(query.split()).casefold()
 
 
+def _status_for_missing(posting: JobPostingRow, today: date) -> tuple[str, str]:
+    """Resolve a posting absent from a completed search without false closure."""
+    if posting.deadline_date is not None and posting.deadline_date < today:
+        return JobStatus.CLOSED.value, "deadline passed and absent from completed search"
+    # A partial/profile-scoped search cannot prove that an undated or future-
+    # deadline posting is closed. Keep the status already stored in the DB.
+    return posting.detected_status, posting.status_reason or "stored status retained"
+
+
 class SyncService:
     def __init__(self, sessions, adapters, profiles, commit_batch_size: int = 10):
         self.sessions, self.adapters, self.profiles = sessions, adapters, profiles
@@ -48,30 +57,40 @@ class SyncService:
                 await session.execute(
                     select(JobPostingRow).where(
                         JobPostingRow.source == source,
-                        JobPostingRow.detected_status == JobStatus.ACTIVE.value,
+                        JobPostingRow.detected_status.in_(
+                            (JobStatus.ACTIVE.value, JobStatus.UNKNOWN.value)
+                        ),
                         JobPostingRow.last_seen_at < started_at,
                     )
                 )
             ).scalars()
             for posting in rows:
-                previous_hash = posting.content_hash
-                posting.detected_status = JobStatus.UNKNOWN.value
-                posting.status_reason = "not returned by completed source search"
+                old_status = posting.detected_status
+                target_status, reason = _status_for_missing(posting, datetime.now(UTC).date())
                 posting.last_checked_at = now()
+                if target_status == old_status and reason == posting.status_reason:
+                    continue
+                previous_hash = posting.content_hash
+                posting.detected_status = target_status
+                posting.status_reason = reason
                 posting.content_hash = content_hash(
-                    {"previous_hash": previous_hash, "status": "UNKNOWN"}
+                    {"previous_hash": previous_hash, "status": target_status}
                 )
+                if target_status == JobStatus.CLOSED.value:
+                    posting.closed_at = now()
                 session.add(
                     JobSnapshotRow(
                         job_posting_id=posting.id,
-                        change_type=JobChangeType.STATUS_CHANGED.value,
-                        previous_status=JobStatus.ACTIVE.value,
-                        current_status=JobStatus.UNKNOWN.value,
+                        change_type=JobChangeType.CLOSED.value
+                        if target_status == JobStatus.CLOSED.value
+                        else JobChangeType.STATUS_CHANGED.value,
+                        previous_status=old_status,
+                        current_status=target_status,
                         changed_fields=["detected_status", "status_reason"],
                         content_hash=posting.content_hash,
                         snapshot={
-                            "detected_status": JobStatus.UNKNOWN.value,
-                            "status_reason": posting.status_reason,
+                            "detected_status": target_status,
+                            "status_reason": reason,
                         },
                     )
                 )
@@ -271,38 +290,50 @@ class SyncService:
                     if run.fetched_count and run.fetched_count % self.commit_batch_size == 0:
                         # Persist progress while a large source crawl is still running.
                         await session.commit()
-                # A completed source search no longer contains this previously active
-                # posting. It is not proof of closure, so preserve it as UNKNOWN.
+                # Reconcile only after a complete search. A passed deadline is
+                # definitive; otherwise retain the status already stored.
                 missing = []
                 if mark_missing:
                     missing = (
                         await session.execute(
                             select(JobPostingRow).where(
                                 JobPostingRow.source == source,
-                                JobPostingRow.detected_status == JobStatus.ACTIVE.value,
+                                JobPostingRow.detected_status.in_(
+                                    (JobStatus.ACTIVE.value, JobStatus.UNKNOWN.value)
+                                ),
                                 JobPostingRow.source_job_id.not_in(unique),
                             )
                         )
                     ).scalars()
                 for posting in missing:
-                    previous_hash = posting.content_hash
-                    posting.detected_status = JobStatus.UNKNOWN.value
-                    posting.status_reason = "not returned by completed source search"
-                    posting.last_checked_at = now()
-                    posting.content_hash = content_hash(
-                        {"previous_hash": previous_hash, "status": "UNKNOWN"}
+                    old_status = posting.detected_status
+                    target_status, reason = _status_for_missing(
+                        posting, datetime.now(UTC).date()
                     )
+                    posting.last_checked_at = now()
+                    if target_status == old_status and reason == posting.status_reason:
+                        continue
+                    previous_hash = posting.content_hash
+                    posting.detected_status = target_status
+                    posting.status_reason = reason
+                    posting.content_hash = content_hash(
+                        {"previous_hash": previous_hash, "status": target_status}
+                    )
+                    if target_status == JobStatus.CLOSED.value:
+                        posting.closed_at = now()
                     session.add(
                         JobSnapshotRow(
                             job_posting_id=posting.id,
-                            change_type=JobChangeType.STATUS_CHANGED.value,
-                            previous_status=JobStatus.ACTIVE.value,
-                            current_status=JobStatus.UNKNOWN.value,
+                            change_type=JobChangeType.CLOSED.value
+                            if target_status == JobStatus.CLOSED.value
+                            else JobChangeType.STATUS_CHANGED.value,
+                            previous_status=old_status,
+                            current_status=target_status,
                             changed_fields=["detected_status", "status_reason"],
                             content_hash=posting.content_hash,
                             snapshot={
-                                "detected_status": JobStatus.UNKNOWN.value,
-                                "status_reason": posting.status_reason,
+                                "detected_status": target_status,
+                                "status_reason": reason,
                             },
                         )
                     )

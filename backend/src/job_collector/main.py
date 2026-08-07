@@ -29,8 +29,8 @@ async def run_scheduler() -> None:
                 await app.state.sync.reconcile_missing(source, started_at)
 
         async def recheck_all() -> None:
-            # A source refresh confirms current records and turns postings absent
-            # from its completed search into UNKNOWN, never directly CLOSED.
+            # A source refresh confirms current records; expired missing postings
+            # become CLOSED while undated/future-deadline records retain status.
             await sync_all()
 
         active_schedule: tuple[str, str] | None = None
