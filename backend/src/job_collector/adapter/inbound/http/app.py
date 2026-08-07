@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import hmac
+import json
 from contextlib import asynccontextmanager
 from datetime import UTC, date, datetime, timedelta
 from typing import Literal
@@ -11,7 +12,8 @@ from apscheduler.triggers.cron import CronTrigger
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
-from sqlalchemy import and_, delete, func, or_, select, update
+from sqlalchemy import and_, cast, delete, func, or_, select, update
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -324,11 +326,19 @@ def create_app() -> FastAPI:
                     JobPostingRow.min_experience_years <= max_experience,
                 )
             )
-        # JSON array containment is portable enough for Postgres and SQLite query fallback.
+        # SQLAlchemy's generic JSON comparator renders ``contains`` as LIKE on
+        # PostgreSQL, which fails for JSONB arrays (notably values such as C++).
+        # Use native JSONB containment on PostgreSQL and retain SQLite fallback.
+        is_postgres = session.get_bind().dialect.name == "postgresql"
         for field, raw in ((JobPostingRow.categories, categories), (JobPostingRow.skills, skills)):
             if raw:
                 for item in raw.split(","):
-                    clauses.append(field.contains([item]))
+                    if is_postgres:
+                        clauses.append(
+                            cast(field, JSONB).op("@>")(cast(json.dumps([item]), JSONB))
+                        )
+                    else:
+                        clauses.append(field.contains([item]))
         sort_columns = {
             "deadline_date": JobPostingRow.deadline_date,
             "company_name": JobPostingRow.company_name,
